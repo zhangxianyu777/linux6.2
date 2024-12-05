@@ -1120,8 +1120,10 @@ static const struct proto_ops inet_sockraw_ops = {
 #endif
 };
 
+//为 PF_INET（IPv4协议族）提供协议相关的操作
 static const struct net_proto_family inet_family_ops = {
 	.family = PF_INET,
+	//创建套接字的函数
 	.create = inet_create,
 	.owner	= THIS_MODULE,
 };
@@ -1728,6 +1730,7 @@ static const struct net_protocol igmp_protocol = {
 };
 #endif
 
+//tcp处理结构
 static const struct net_protocol tcp_protocol = {
 	.handler	=	tcp_v4_rcv,
 	.err_handler	=	tcp_v4_err,
@@ -1735,12 +1738,14 @@ static const struct net_protocol tcp_protocol = {
 	.icmp_strict_tag_validation = 1,
 };
 
+//udp处理结构
 static const struct net_protocol udp_protocol = {
 	.handler =	udp_rcv,
 	.err_handler =	udp_err,
 	.no_policy =	1,
 };
 
+//icmp处理结构
 static const struct net_protocol icmp_protocol = {
 	.handler =	icmp_rcv,
 	.err_handler =	icmp_err,
@@ -1925,10 +1930,12 @@ fs_initcall(ipv4_offload_init);
 
 static struct packet_type ip_packet_type __read_mostly = {
 	.type = cpu_to_be16(ETH_P_IP),
+	//ip层处理函数
 	.func = ip_rcv,
 	.list_func = ip_list_rcv,
 };
 
+//初始化与网络协议栈
 static int __init inet_init(void)
 {
 	struct inet_protosw *q;
@@ -1939,6 +1946,7 @@ static int __init inet_init(void)
 
 	raw_hashinfo_init(&raw_v4_hashinfo);
 
+	//注册多个协议
 	rc = proto_register(&tcp_prot, 1);
 	if (rc)
 		goto out;
@@ -1959,6 +1967,7 @@ static int __init inet_init(void)
 	 *	Tell SOCKET that we are alive...
 	 */
 
+	//注册了一个套接字操作集
 	(void)sock_register(&inet_family_ops);
 
 #ifdef CONFIG_SYSCTL
@@ -1969,6 +1978,7 @@ static int __init inet_init(void)
 	 *	Add all the base protocols.
 	 */
 
+	//向内核的网络栈中注册各种协议
 	if (inet_add_protocol(&icmp_protocol, IPPROTO_ICMP) < 0)
 		pr_crit("%s: Cannot add ICMP protocol\n", __func__);
 	if (inet_add_protocol(&udp_protocol, IPPROTO_UDP) < 0)
@@ -2038,6 +2048,7 @@ static int __init inet_init(void)
 
 	ipfrag_init();
 
+	//将 IP 数据包处理函数注册到内核中，通过ptype_base表索引
 	dev_add_pack(&ip_packet_type);
 
 	ip_tunnel_core_init();
