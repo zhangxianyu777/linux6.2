@@ -243,14 +243,17 @@ int driver_register(struct device_driver *drv)
 		return -EBUSY;
 	}
 
+	//将驱动添加到总线:
 	ret = bus_add_driver(drv);
 	if (ret)
 		return ret;
+	//为驱动程序添加属性组
 	ret = driver_add_groups(drv, drv->groups);
 	if (ret) {
 		bus_remove_driver(drv);
 		return ret;
 	}
+	//发送一个 KOBJ_ADD 事件，通知系统此驱动已添加
 	kobject_uevent(&drv->p->kobj, KOBJ_ADD);
 	deferred_probe_extend_timeout();
 

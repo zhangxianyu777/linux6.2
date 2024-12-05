@@ -1424,10 +1424,12 @@ static const struct dev_pm_ops pci_dev_pm_ops = {
  * If no error occurred, the driver remains registered even if
  * no device was claimed during registration.
  */
+//注册一个 PCI 驱动程序
 int __pci_register_driver(struct pci_driver *drv, struct module *owner,
 			  const char *mod_name)
 {
 	/* initialize common driver fields */
+	//初始化pci_driver 字段
 	drv->driver.name = drv->name;
 	drv->driver.bus = &pci_bus_type;
 	drv->driver.owner = owner;
@@ -1439,6 +1441,7 @@ int __pci_register_driver(struct pci_driver *drv, struct module *owner,
 	INIT_LIST_HEAD(&drv->dynids.list);
 
 	/* register with core */
+	//注册驱动
 	return driver_register(&drv->driver);
 }
 EXPORT_SYMBOL(__pci_register_driver);
