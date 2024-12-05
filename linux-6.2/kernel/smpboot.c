@@ -166,27 +166,32 @@ static int smpboot_thread_fn(void *data)
 	}
 }
 
+//在指定的 CPU 上创建一个新的线程
 static int
 __smpboot_create_thread(struct smp_hotplug_thread *ht, unsigned int cpu)
 {
 	struct task_struct *tsk = *per_cpu_ptr(ht->store, cpu);
 	struct smpboot_thread_data *td;
 
+	//检查是否已有线程，已有则直接返回
 	if (tsk)
 		return 0;
 
+	//分配内存空间来保存线程数据（td），并且将数据分配到与 CPU 关联的 NUMA 节点上（cpu_to_node(cpu)）。这是为了优化内存访问效率。
 	td = kzalloc_node(sizeof(*td), GFP_KERNEL, cpu_to_node(cpu));
 	if (!td)
 		return -ENOMEM;
 	td->cpu = cpu;
 	td->ht = ht;
 
+	//在指定的 CPU 上创建线程。该线程的入口函数是 smpboot_thread_fn，并传递 td 作为参数。
 	tsk = kthread_create_on_cpu(smpboot_thread_fn, td, cpu,
 				    ht->thread_comm);
 	if (IS_ERR(tsk)) {
 		kfree(td);
 		return PTR_ERR(tsk);
 	}
+	//将线程与指定的 CPU 绑定
 	kthread_set_per_cpu(tsk, cpu);
 	/*
 	 * Park the thread so that it could start right on the CPU
@@ -285,6 +290,7 @@ static void smpboot_destroy_threads(struct smp_hotplug_thread *ht)
  * @plug_thread:	Hotplug thread descriptor
  *
  * Creates and starts the threads on all online cpus.
+ * 在每个cpu上创建softirqd线程
  */
 int smpboot_register_percpu_thread(struct smp_hotplug_thread *plug_thread)
 {
@@ -293,7 +299,9 @@ int smpboot_register_percpu_thread(struct smp_hotplug_thread *plug_thread)
 
 	cpus_read_lock();
 	mutex_lock(&smpboot_threads_lock);
+	//遍历当前所有在线的 CPU
 	for_each_online_cpu(cpu) {
+		//为指定的 CPU 创建线程
 		ret = __smpboot_create_thread(plug_thread, cpu);
 		if (ret) {
 			smpboot_destroy_threads(plug_thread);
@@ -301,6 +309,7 @@ int smpboot_register_percpu_thread(struct smp_hotplug_thread *plug_thread)
 		}
 		smpboot_unpark_thread(plug_thread, cpu);
 	}
+	//这个列表会在 CPU 热插拔时用到，用于在 CPU 下线时销毁线程、上线时重新创建线程
 	list_add(&plug_thread->list, &hotplug_threads);
 out:
 	mutex_unlock(&smpboot_threads_lock);

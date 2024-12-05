@@ -520,10 +520,12 @@ DECLARE_STATIC_KEY_FALSE(force_irqthreads_key);
 #ifndef local_softirq_pending
 
 #ifndef local_softirq_pending_ref
+//local_softirq_pending_ref实际上是irq_stat结构中的__softirq_pending，__softirq_pending字段中的每一个bit，对应着某一个软中断，某个bit被置位，说明有相应的软中断等待处理。
 #define local_softirq_pending_ref irq_stat.__softirq_pending
 #endif
 
 #define local_softirq_pending()	(__this_cpu_read(local_softirq_pending_ref))
+////检查当前 CPU 上是否有待处理的软中断，它通过 __this_cpu_read() 宏访问当前 CPU 上存储的软中断标志，local_softirq_pending_ref 是存储软中断状态的变量。
 #define set_softirq_pending(x)	(__this_cpu_write(local_softirq_pending_ref, (x)))
 #define or_softirq_pending(x)	(__this_cpu_or(local_softirq_pending_ref, (x)))
 
@@ -545,6 +547,7 @@ DECLARE_STATIC_KEY_FALSE(force_irqthreads_key);
    al. should be converted to tasklets, not to softirqs.
  */
 
+//所有软中断类型
 enum
 {
 	HI_SOFTIRQ=0,
