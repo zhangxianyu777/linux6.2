@@ -11368,6 +11368,7 @@ static int __init net_dev_init(void)
 	if (netdev_kobject_init())
 		goto out;
 
+	//初始化 ptype_all 和 ptype_base 列表 ，用于存储网络协议类型的结构。
 	INIT_LIST_HEAD(&ptype_all);
 	for (i = 0; i < PTYPE_HASH_SIZE; i++)
 		INIT_LIST_HEAD(&ptype_base[i]);
@@ -11381,6 +11382,7 @@ static int __init net_dev_init(void)
 
 	for_each_possible_cpu(i) {
 		struct work_struct *flush = per_cpu_ptr(&flush_works, i);
+		//为每个CPU都申请⼀个softnet_data结构
 		struct softnet_data *sd = &per_cpu(softnet_data, i);
 
 		INIT_WORK(flush, flush_backlog);
@@ -11420,7 +11422,8 @@ static int __init net_dev_init(void)
 
 	if (register_pernet_device(&default_device_ops))
 		goto out;
-
+		
+	//为相应软中断注册处理函数。
 	open_softirq(NET_TX_SOFTIRQ, net_tx_action);
 	open_softirq(NET_RX_SOFTIRQ, net_rx_action);
 

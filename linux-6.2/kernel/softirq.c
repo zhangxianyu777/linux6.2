@@ -725,8 +725,10 @@ void __raise_softirq_irqoff(unsigned int nr)
 	or_softirq_pending(1UL << nr);
 }
 
+//为相应软中断注册处理函数。
 void open_softirq(int nr, void (*action)(struct softirq_action *))
 {
+	//对应的函数记录在对应softirq vec变量中
 	softirq_vec[nr].action = action;
 }
 
