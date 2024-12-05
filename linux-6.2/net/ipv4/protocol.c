@@ -29,8 +29,10 @@ EXPORT_SYMBOL(inet_protos);
 const struct net_offload __rcu *inet_offloads[MAX_INET_PROTOS] __read_mostly;
 EXPORT_SYMBOL(inet_offloads);
 
+//将一个网络协议添加到协议表中
 int inet_add_protocol(const struct net_protocol *prot, unsigned char protocol)
 {
+	//将对应的处理函数都注册到inet_protos数组中
 	return !cmpxchg((const struct net_protocol **)&inet_protos[protocol],
 			NULL, prot) ? 0 : -1;
 }

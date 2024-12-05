@@ -219,9 +219,11 @@ static const struct pci_error_handlers igb_err_handler = {
 
 static void igb_init_dmac(struct igb_adapter *adapter, u32 pba);
 
+//驱动程序的初始化、匹配、移除等操作函数
 static struct pci_driver igb_driver = {
 	.name     = igb_driver_name,
 	.id_table = igb_pci_tbl,
+	//设备被识别后调用probe函数，让设备就绪
 	.probe    = igb_probe,
 	.remove   = igb_remove,
 #ifdef CONFIG_PM
@@ -653,6 +655,7 @@ struct net_device *igb_get_hw_dev(struct e1000_hw *hw)
  *  igb_init_module is the first routine called when the driver is
  *  loaded. All it does is register with the PCI subsystem.
  **/
+//以太网卡驱动（igb）模块的初始化函数
 static int __init igb_init_module(void)
 {
 	int ret;
@@ -663,6 +666,7 @@ static int __init igb_init_module(void)
 #ifdef CONFIG_IGB_DCA
 	dca_register_notify(&dca_notifier);
 #endif
+	//注册 PCI 驱动程序。在 PCI 驱动程序注册时，系统会将该驱动与匹配的 PCI 设备进行关联
 	ret = pci_register_driver(&igb_driver);
 	return ret;
 }
@@ -963,6 +967,7 @@ static int igb_request_msix(struct igb_adapter *adapter)
 		else
 			sprintf(q_vector->name, "%s-unused", netdev->name);
 
+		//实际注册中断函数，为igb_msix_ring
 		err = request_irq(adapter->msix_entries[vector].vector,
 				  igb_msix_ring, 0, q_vector->name,
 				  q_vector);
@@ -1215,6 +1220,7 @@ static int igb_alloc_q_vector(struct igb_adapter *adapter,
 		return -ENOMEM;
 
 	/* initialize NAPI */
+	//注册NAPI所需要的poll函数，为igb_poll
 	netif_napi_add(adapter->netdev, &q_vector->napi, igb_poll);
 
 	/* tie q_vector and adapter together */
@@ -1414,6 +1420,7 @@ static int igb_request_irq(struct igb_adapter *adapter)
 	int err = 0;
 
 	if (adapter->flags & IGB_FLAG_HAS_MSIX) {
+		//注册中断函数
 		err = igb_request_msix(adapter);
 		if (!err)
 			goto request_done;
@@ -3008,7 +3015,7 @@ static int igb_xdp_xmit(struct net_device *dev, int n,
 
 	return nxmit;
 }
-
+//驱动操作集合
 static const struct net_device_ops igb_netdev_ops = {
 	.ndo_open		= igb_open,
 	.ndo_stop		= igb_close,
@@ -3238,6 +3245,7 @@ static int igb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* hw->hw_addr can be altered, we'll use adapter->io_addr for unmap */
 	hw->hw_addr = adapter->io_addr;
 
+	//注册igb_netdev_ops
 	netdev->netdev_ops = &igb_netdev_ops;
 	igb_set_ethtool_ops(netdev);
 	netdev->watchdog_timeo = 5 * HZ;
@@ -3509,6 +3517,7 @@ static int igb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	igb_get_hw_control(adapter);
 
 	strcpy(netdev->name, "eth%d");
+	//注册 netdev
 	err = register_netdev(netdev);
 	if (err)
 		goto err_register;
@@ -4073,6 +4082,7 @@ static int igb_sw_init(struct igb_adapter *adapter)
  *  handler is registered with the OS, the watchdog timer is started,
  *  and the stack is notified that the interface is ready.
  **/
+//网卡打开时被调用
 static int __igb_open(struct net_device *netdev, bool resuming)
 {
 	struct igb_adapter *adapter = netdev_priv(netdev);
@@ -4092,11 +4102,13 @@ static int __igb_open(struct net_device *netdev, bool resuming)
 
 	netif_carrier_off(netdev);
 
+	//分配tx队列内存
 	/* allocate transmit descriptors */
 	err = igb_setup_all_tx_resources(adapter);
 	if (err)
 		goto err_setup_tx;
 
+	//分配rx队列内存
 	/* allocate receive descriptors */
 	err = igb_setup_all_rx_resources(adapter);
 	if (err)
@@ -4111,6 +4123,7 @@ static int __igb_open(struct net_device *netdev, bool resuming)
 	 */
 	igb_configure(adapter);
 
+	//注册中断处理函数
 	err = igb_request_irq(adapter);
 	if (err)
 		goto err_req_irq;
@@ -4129,6 +4142,7 @@ static int __igb_open(struct net_device *netdev, bool resuming)
 	/* From here on the code is the same as igb_up() */
 	clear_bit(__IGB_DOWN, &adapter->state);
 
+	//启用NAPI
 	for (i = 0; i < adapter->num_q_vectors; i++)
 		napi_enable(&(adapter->q_vector[i]->napi));
 
@@ -4390,6 +4404,7 @@ int igb_setup_rx_resources(struct igb_ring *rx_ring)
 		return res;
 	}
 
+	//申请igb_rx_buffer数组内存
 	size = sizeof(struct igb_rx_buffer) * rx_ring->count;
 
 	rx_ring->rx_buffer_info = vmalloc(size);
@@ -4397,6 +4412,7 @@ int igb_setup_rx_resources(struct igb_ring *rx_ring)
 		goto err;
 
 	/* Round up to nearest 4K */
+	//申请e1000_adv_rx_desc DMA数组内存
 	rx_ring->size = rx_ring->count * sizeof(union e1000_adv_rx_desc);
 	rx_ring->size = ALIGN(rx_ring->size, 4096);
 
@@ -4405,6 +4421,7 @@ int igb_setup_rx_resources(struct igb_ring *rx_ring)
 	if (!rx_ring->desc)
 		goto err;
 
+	//初始化队列成员
 	rx_ring->next_to_alloc = 0;
 	rx_ring->next_to_clean = 0;
 	rx_ring->next_to_use = 0;
@@ -4428,12 +4445,14 @@ err:
  *
  *  Return 0 on success, negative on failure
  **/
+//分配接受描述符数组
 static int igb_setup_all_rx_resources(struct igb_adapter *adapter)
 {
 	struct pci_dev *pdev = adapter->pdev;
 	int i, err = 0;
 
 	for (i = 0; i < adapter->num_rx_queues; i++) {
+		//通过循环创建多个接受队列
 		err = igb_setup_rx_resources(adapter->rx_ring[i]);
 		if (err) {
 			dev_err(&pdev->dev,

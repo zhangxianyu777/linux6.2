@@ -3874,6 +3874,7 @@ static int req_prot_init(const struct proto *prot)
 	return 0;
 }
 
+//协议注册
 int proto_register(struct proto *prot, int alloc_slab)
 {
 	int ret = -ENOBUFS;
@@ -3913,6 +3914,7 @@ int proto_register(struct proto *prot, int alloc_slab)
 		mutex_unlock(&proto_list_mutex);
 		goto out_free_timewait_sock_slab;
 	}
+	//将协议添加到协议链表中
 	list_add(&prot->node, &proto_list);
 	mutex_unlock(&proto_list_mutex);
 	return ret;

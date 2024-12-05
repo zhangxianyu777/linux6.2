@@ -525,6 +525,7 @@ static inline bool lockdep_softirq_start(void) { return false; }
 static inline void lockdep_softirq_end(bool in_hardirq) { }
 #endif
 
+//处理待处理的软中断
 asmlinkage __visible void __softirq_entry __do_softirq(void)
 {
 	unsigned long end = jiffies + MAX_SOFTIRQ_TIME;
@@ -542,32 +543,42 @@ asmlinkage __visible void __softirq_entry __do_softirq(void)
 	 */
 	current->flags &= ~PF_MEMALLOC;
 
+	//获取当前 CPU 上待处理的软中断位图。这个变量包含了当前 CPU 上所有待处理的软中断标志位。
 	pending = local_softirq_pending();
 
 	softirq_handle_begin();
+	//检查是否已经处于硬中断上下文中
 	in_hardirq = lockdep_softirq_start();
+	//记录软中断的执行信息
 	account_softirq_enter(current);
 
 restart:
 	/* Reset the pending bitmask before enabling irqs */
+	//重置当前 CPU 上的软中断标志
 	set_softirq_pending(0);
 
 	local_irq_enable();
 
+	//软中断处理函数数组
 	h = softirq_vec;
 
+	//此处通过不断将1右移消去来减少每次判断的长度，所以需要额外的变量h来进行记录
+	//ffs(pending) 返回 pending 中最低位的软中断标志。每次执行软中断处理时，它会从 pending 位图中取出一个软中断，并执行对应的处理函数。
 	while ((softirq_bit = ffs(pending))) {
 		unsigned int vec_nr;
 		int prev_count;
 
+		//对应的软中断索引
 		h += softirq_bit - 1;
 
+		//软中断在 softirq_vec 数组中的索引，即对应的软中断类型
 		vec_nr = h - softirq_vec;
 		prev_count = preempt_count();
 
 		kstat_incr_softirqs_this_cpu(vec_nr);
 
 		trace_softirq_entry(vec_nr);
+		//执行对应软中断类型的处理函数
 		h->action(h);
 		trace_softirq_exit(vec_nr);
 		if (unlikely(prev_count != preempt_count())) {
@@ -577,6 +588,7 @@ restart:
 			preempt_count_set(prev_count);
 		}
 		h++;
+		//将处理过的右移置0
 		pending >>= softirq_bit;
 	}
 
@@ -713,8 +725,10 @@ void __raise_softirq_irqoff(unsigned int nr)
 	or_softirq_pending(1UL << nr);
 }
 
+//为相应软中断注册处理函数。
 void open_softirq(int nr, void (*action)(struct softirq_action *))
 {
+	//对应的函数记录在对应softirq vec变量中
 	softirq_vec[nr].action = action;
 }
 
@@ -918,21 +932,27 @@ void __init softirq_init(void)
 	open_softirq(HI_SOFTIRQ, tasklet_hi_action);
 }
 
+//检查指定 CPU 上是否有待处理的软中断
 static int ksoftirqd_should_run(unsigned int cpu)
 {
 	return local_softirq_pending();
 }
 
+//软中断处理
 static void run_ksoftirqd(unsigned int cpu)
 {
+	//禁用当前 CPU 上的中断
 	ksoftirqd_run_begin();
 	if (local_softirq_pending()) {
 		/*
 		 * We can safely run softirq on inline stack, as we are not deep
 		 * in the task stack here.
 		 */
+		//处理所有待处理的软中断。它会遍历所有软中断类型，处理相关的任务。
 		__do_softirq();
+		//打开cpu上的中断
 		ksoftirqd_run_end();
+		//检查当前任务是否已经运行了足够长时间，是否需要让出 CPU 给其他任务
 		cond_resched();
 		return;
 	}
@@ -969,22 +989,28 @@ static int takeover_tasklets(unsigned int cpu)
 #define takeover_tasklets	NULL
 #endif /* CONFIG_HOTPLUG_CPU */
 
+//描述和配置 ksoftirqd 线程的相关信息。这个结构体包含了线程的一些配置项，如线程的执行函数、线程的名称等。
 static struct smp_hotplug_thread softirq_threads = {
 	.store			= &ksoftirqd,
+	//检查指定 CPU 上是否有待处理的软中断
 	.thread_should_run	= ksoftirqd_should_run,
+	//执行软中断处理任务
 	.thread_fn		= run_ksoftirqd,
 	.thread_comm		= "ksoftirqd/%u",
 };
 
+//创建ksoftirqd线程
 static __init int spawn_ksoftirqd(void)
 {
+	//将软中断的状态设置为 CPUHP_SOFTIRQ_DEAD，意味着软中断处理已不再运行
 	cpuhp_setup_state_nocalls(CPUHP_SOFTIRQ_DEAD, "softirq:dead", NULL,
 				  takeover_tasklets);
+	//在每个 CPU 上启动一个软中断线程（softirq_threads），处理软中断任务
 	BUG_ON(smpboot_register_percpu_thread(&softirq_threads));
 
 	return 0;
 }
-early_initcall(spawn_ksoftirqd);
+early_initcall(spawn_ksoftirqd);//在内核的初始化过程中尽早执行
 
 /*
  * [ These __weak aliases are kept in a separate compilation unit, so that
