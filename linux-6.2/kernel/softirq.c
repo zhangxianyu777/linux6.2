@@ -578,7 +578,7 @@ restart:
 		kstat_incr_softirqs_this_cpu(vec_nr);
 
 		trace_softirq_entry(vec_nr);
-		//执行对应软中断类型的处理函数
+		//执行对应软中断类型的处理函数 收包net_rx_action 发包net_tx_action
 		h->action(h);
 		trace_softirq_exit(vec_nr);
 		if (unlikely(prev_count != preempt_count())) {
@@ -722,6 +722,7 @@ void __raise_softirq_irqoff(unsigned int nr)
 {
 	lockdep_assert_irqs_disabled();
 	trace_softirq_raise(nr);
+	//写入软中断标记
 	or_softirq_pending(1UL << nr);
 }
 

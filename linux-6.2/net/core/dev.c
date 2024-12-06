@@ -4356,7 +4356,9 @@ static inline void ____napi_schedule(struct softnet_data *sd,
 		}
 	}
 
+	//将当前的 NAPI的poll_list 添加到当前CPU softnet_data的poll_list 中
 	list_add_tail(&napi->poll_list, &sd->poll_list);
+	//触发软中断，实际上是将irq_stat.__softirq_pending置位
 	__raise_softirq_irqoff(NET_RX_SOFTIRQ);
 }
 
@@ -6476,6 +6478,7 @@ static int __napi_poll(struct napi_struct *n, bool *repoll)
 	 */
 	work = 0;
 	if (test_bit(NAPI_STATE_SCHED, &n->state)) {
+		//调用实际poll函数 在pci_register_driver触发igb_probe时注册，对于igb来说位igb_poll
 		work = n->poll(n, weight);
 		trace_napi_poll(n, work, weight);
 	}
@@ -6533,6 +6536,7 @@ static int __napi_poll(struct napi_struct *n, bool *repoll)
 	return work;
 }
 
+//实际执行 NAPI 轮询的核心部分，用于处理网络接收数据包
 static int napi_poll(struct napi_struct *n, struct list_head *repoll)
 {
 	bool do_repoll = false;
@@ -6629,9 +6633,12 @@ static void skb_defer_free_flush(struct softnet_data *sd)
 	}
 }
 
+//rx软中断实际处理函数
 static __latent_entropy void net_rx_action(struct softirq_action *h)
 {
-	struct softnet_data *sd = this_cpu_ptr(&softnet_data);
+	//获取当前CPU的softnet_data
+	struct softnet_data *  = this_cpu_ptr(&softnet_data);
+	//控制函数主动退出，保证接收不会一直占着CPU
 	unsigned long time_limit = jiffies +
 		usecs_to_jiffies(READ_ONCE(netdev_budget_usecs));
 	int budget = READ_ONCE(netdev_budget);
@@ -6653,6 +6660,7 @@ static __latent_entropy void net_rx_action(struct softirq_action *h)
 			break;
 		}
 
+		//每次循环从 list 中取出一个 NAPI 任务（即 napi_struct），并调用 napi_poll() 来处理该任务，处理的结果会添加到 repoll 列表中。
 		n = list_first_entry(&list, struct napi_struct, poll_list);
 		budget -= napi_poll(n, &repoll);
 

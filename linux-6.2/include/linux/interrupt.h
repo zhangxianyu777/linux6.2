@@ -160,6 +160,7 @@ request_threaded_irq(unsigned int irq, irq_handler_t handler,
  *
  * This call allocates an interrupt and establishes a handler; see
  * the documentation for request_threaded_irq() for details.
+ * 请求中断并为其设置处理程序
  */
 static inline int __must_check
 request_irq(unsigned int irq, irq_handler_t handler, unsigned long flags,
@@ -524,9 +525,11 @@ DECLARE_STATIC_KEY_FALSE(force_irqthreads_key);
 #define local_softirq_pending_ref irq_stat.__softirq_pending
 #endif
 
+//检测当前cpu上是否有软中断
 #define local_softirq_pending()	(__this_cpu_read(local_softirq_pending_ref))
-////检查当前 CPU 上是否有待处理的软中断，它通过 __this_cpu_read() 宏访问当前 CPU 上存储的软中断标志，local_softirq_pending_ref 是存储软中断状态的变量。
+//检查当前 CPU 上是否有待处理的软中断，它通过 __this_cpu_read() 宏访问当前 CPU 上存储的软中断标志，local_softirq_pending_ref 是存储软中断状态的变量。
 #define set_softirq_pending(x)	(__this_cpu_write(local_softirq_pending_ref, (x)))
+//通过原子操作将给定的软中断标志位设置到当前 CPU 上的软中断状态中
 #define or_softirq_pending(x)	(__this_cpu_or(local_softirq_pending_ref, (x)))
 
 #endif /* local_softirq_pending */

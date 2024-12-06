@@ -475,6 +475,7 @@ bool napi_schedule_prep(struct napi_struct *n);
  *
  * Schedule NAPI poll routine to be called if it is not already
  * running.
+ * 安排一个 NAPI 轮询例程在当前网络中断上下文完成后被调用
  */
 static inline void napi_schedule(struct napi_struct *n)
 {

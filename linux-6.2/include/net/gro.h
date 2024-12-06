@@ -430,6 +430,7 @@ static inline void gro_normal_list(struct napi_struct *napi)
 {
 	if (!napi->rx_count)
 		return;
+	//传到链路层
 	netif_receive_skb_list_internal(&napi->rx_list);
 	INIT_LIST_HEAD(&napi->rx_list);
 	napi->rx_count = 0;
@@ -438,11 +439,14 @@ static inline void gro_normal_list(struct napi_struct *napi)
 /* Queue one GRO_NORMAL SKB up for list processing. If batch size exceeded,
  * pass the whole batch up to the stack.
  */
+//将每个接收到的数据包添加到 NAPI 的接收队列中，并统计接收的数据包数量。
 static inline void gro_normal_one(struct napi_struct *napi, struct sk_buff *skb, int segs)
 {
 	list_add_tail(&skb->list, &napi->rx_list);
 	napi->rx_count += segs;
+	//达到指定的批量大小
 	if (napi->rx_count >= READ_ONCE(gro_normal_batch))
+		//批量处理并传递给上层协议栈
 		gro_normal_list(napi);
 }
 
