@@ -616,12 +616,14 @@ struct packet_offload *gro_find_complete_by_type(__be16 type)
 }
 EXPORT_SYMBOL(gro_find_complete_by_type);
 
+//完成 NAPI 的接收过程,传递给上层协议栈处理
 static gro_result_t napi_skb_finish(struct napi_struct *napi,
 				    struct sk_buff *skb,
 				    gro_result_t ret)
 {
 	switch (ret) {
 	case GRO_NORMAL:
+		//交给上次协议栈
 		gro_normal_one(napi, skb, 1);
 		break;
 
@@ -643,6 +645,7 @@ static gro_result_t napi_skb_finish(struct napi_struct *napi,
 	return ret;
 }
 
+//在 NAPI架构下进行接收合并
 gro_result_t napi_gro_receive(struct napi_struct *napi, struct sk_buff *skb)
 {
 	gro_result_t ret;
@@ -652,6 +655,8 @@ gro_result_t napi_gro_receive(struct napi_struct *napi, struct sk_buff *skb)
 
 	skb_gro_reset_offset(skb, 0);
 
+	//首先调用 dev_gro_receive(napi, skb)，这个函数会把数据包传递给设备的接收合并处理函数。它可能会执行接收合并（GRO）操作，合并多个较小的分段数据包为一个大的数据包，从而提高性能。
+	//dev_gro_receive 返回的结果会传递给 napi_skb_finish，该函数处理接收到的合并数据包，最终完成 NAPI 的接收过程。合并的数据包最终会被传递给上层协议栈处理，或者直接交给用户空间。
 	ret = napi_skb_finish(napi, skb, dev_gro_receive(napi, skb));
 	trace_napi_gro_receive_exit(ret);
 

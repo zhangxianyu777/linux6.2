@@ -930,31 +930,39 @@ static void igb_configure_msix(struct igb_adapter *adapter)
  *
  *  igb_request_msix allocates MSI-X vectors and requests interrupts from the
  *  kernel.
+ * 向igb_adapter中的网络适配器请求中断向零，分配中断处理程序
  **/
 static int igb_request_msix(struct igb_adapter *adapter)
 {
+	//队列数量
 	unsigned int num_q_vectors = adapter->num_q_vectors;
+	//网络适配器设备
 	struct net_device *netdev = adapter->netdev;
 	int i, err = 0, vector = 0, free_vector = 0;
 
+	//初始化第一个向量的处理程序为igb_msix_other
 	err = request_irq(adapter->msix_entries[vector].vector,
 			  igb_msix_other, 0, netdev->name, adapter);
 	if (err)
 		goto err_out;
 
+	//检查队列向量数量
 	if (num_q_vectors > MAX_Q_VECTORS) {
 		num_q_vectors = MAX_Q_VECTORS;
 		dev_warn(&adapter->pdev->dev,
 			 "The number of queue vectors (%d) is higher than max allowed (%d)\n",
 			 adapter->num_q_vectors, MAX_Q_VECTORS);
 	}
+	//对于每一个队列
 	for (i = 0; i < num_q_vectors; i++) {
 		struct igb_q_vector *q_vector = adapter->q_vector[i];
 
 		vector++;
 
+		//设置队列的中断寄存器地址
 		q_vector->itr_register = adapter->io_addr + E1000_EITR(vector);
 
+		//创建一个名称，标识该队列的类型
 		if (q_vector->rx.ring && q_vector->tx.ring)
 			sprintf(q_vector->name, "%s-TxRx-%u", netdev->name,
 				q_vector->rx.ring->queue_index);
@@ -967,7 +975,7 @@ static int igb_request_msix(struct igb_adapter *adapter)
 		else
 			sprintf(q_vector->name, "%s-unused", netdev->name);
 
-		//实际注册中断函数，为igb_msix_ring
+		//实际注册中断函数，为igb_msix_ring, msix方式下，每个队列都有独立的MSI-X中断，保证每个队列的中断可以由独立的CPU核心处理
 		err = request_irq(adapter->msix_entries[vector].vector,
 				  igb_msix_ring, 0, q_vector->name,
 				  q_vector);
@@ -1184,6 +1192,7 @@ static void igb_add_ring(struct igb_ring *ring,
  *  @rxr_idx: index of first Rx ring to allocate
  *
  *  We allocate one q_vector.  If allocation fails we return -ENOMEM.
+ * 分配和初始化一个中断向量（q_vector）以及与之关联的发送和接收队列（tx_ring 和 rx_ring）
  **/
 static int igb_alloc_q_vector(struct igb_adapter *adapter,
 			      int v_count, int v_idx,
@@ -1220,7 +1229,7 @@ static int igb_alloc_q_vector(struct igb_adapter *adapter,
 		return -ENOMEM;
 
 	/* initialize NAPI */
-	//注册NAPI所需要的poll函数，为igb_poll
+	//使用 netif_napi_add 注册 NAPI，并指定 igb_poll 作为网络中断的处理函数。NAPI 是一种机制，用于减少中断频率并提高网络吞吐量。
 	netif_napi_add(adapter->netdev, &q_vector->napi, igb_poll);
 
 	/* tie q_vector and adapter together */
@@ -1324,6 +1333,7 @@ static int igb_alloc_q_vector(struct igb_adapter *adapter,
  *
  *  We allocate one q_vector per queue interrupt.  If allocation fails we
  *  return -ENOMEM.
+ * 为网络设备的每个队列分配中断向量
  **/
 static int igb_alloc_q_vectors(struct igb_adapter *adapter)
 {
@@ -3181,6 +3191,7 @@ static s32 igb_init_i2c(struct igb_adapter *adapter)
  *  The OS initialization, configuring of the adapter private structure,
  *  and a hardware reset occur.
  **/
+//在 PCI 设备识别后进行设备的设置和初始化
 static int igb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	struct net_device *netdev;
@@ -3202,10 +3213,12 @@ static int igb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		return -EINVAL;
 	}
 
+	//启用设备的内存访问
 	err = pci_enable_device_mem(pdev);
 	if (err)
 		return err;
 
+	//设置 DMA 地址掩码，确保设备支持 64 位的 DMA 配置。
 	err = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
 	if (err) {
 		dev_err(&pdev->dev,
@@ -3213,6 +3226,7 @@ static int igb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto err_dma;
 	}
 
+	// 请求 PCI 内存区域
 	err = pci_request_mem_regions(pdev, igb_driver_name);
 	if (err)
 		goto err_pci_reg;
@@ -3223,6 +3237,7 @@ static int igb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	pci_save_state(pdev);
 
 	err = -ENOMEM;
+	//配一个网络设备结构体，并为设备分配足够的内存空间来管理多个队列
 	netdev = alloc_etherdev_mq(sizeof(struct igb_adapter),
 				   IGB_MAX_TX_QUEUES);
 	if (!netdev)
@@ -3245,7 +3260,7 @@ static int igb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* hw->hw_addr can be altered, we'll use adapter->io_addr for unmap */
 	hw->hw_addr = adapter->io_addr;
 
-	//注册igb_netdev_ops
+	//igb_netdev_ops（定义的网卡操作函数集）分配给 netdev->netdev_ops
 	netdev->netdev_ops = &igb_netdev_ops;
 	igb_set_ethtool_ops(netdev);
 	netdev->watchdog_timeo = 5 * HZ;
@@ -3517,7 +3532,7 @@ static int igb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	igb_get_hw_control(adapter);
 
 	strcpy(netdev->name, "eth%d");
-	//注册 netdev
+	//调用 register_netdev 注册网络设备
 	err = register_netdev(netdev);
 	if (err)
 		goto err_register;
@@ -7038,13 +7053,16 @@ static void igb_write_itr(struct igb_q_vector *q_vector)
 	q_vector->set_itr = 0;
 }
 
+//igb网卡硬中断实际处理函数
 static irqreturn_t igb_msix_ring(int irq, void *data)
 {
 	struct igb_q_vector *q_vector = data;
 
 	/* Write the ITR value calculated from the previous interrupt. */
+	//用来写入一个中断调节值。ITR 值是通过前一次的中断来计算的。ITR 值会影响中断的触发频率，目的是优化中断处理，避免过度中断造成的性能问题
 	igb_write_itr(q_vector);
 
+	//设置napi的poll，调用____napi_schedule
 	napi_schedule(&q_vector->napi);
 
 	return IRQ_HANDLED;
@@ -8162,9 +8180,11 @@ static void igb_ring_irq_enable(struct igb_q_vector *q_vector)
  *  igb_poll - NAPI Rx polling callback
  *  @napi: napi polling structure
  *  @budget: count of how many packets we should handle
+ * 处理网卡接收到的网络数据包
  **/
 static int igb_poll(struct napi_struct *napi, int budget)
 {
+	//获取网卡队列
 	struct igb_q_vector *q_vector = container_of(napi,
 						     struct igb_q_vector,
 						     napi);
@@ -8175,9 +8195,11 @@ static int igb_poll(struct napi_struct *napi, int budget)
 	if (q_vector->adapter->flags & IGB_FLAG_DCA_ENABLED)
 		igb_update_dca(q_vector);
 #endif
+	//tx执行tx流程
 	if (q_vector->tx.ring)
 		clean_complete = igb_clean_tx_irq(q_vector, budget);
 
+	////rx执行rx流程
 	if (q_vector->rx.ring) {
 		int cleaned = igb_clean_rx_irq(q_vector, budget);
 
@@ -8811,6 +8833,7 @@ static struct igb_rx_buffer *igb_get_rx_buffer(struct igb_ring *rx_ring,
 	prefetchw(rx_buffer->page);
 
 	/* we are reusing so sync this buffer for CPU use */
+	//同步 DMA 缓冲区
 	dma_sync_single_range_for_cpu(rx_ring->dev,
 				      rx_buffer->dma,
 				      rx_buffer->page_offset,
@@ -8845,6 +8868,7 @@ static void igb_put_rx_buffer(struct igb_ring *rx_ring,
 
 static int igb_clean_rx_irq(struct igb_q_vector *q_vector, const int budget)
 {
+	//获取网卡适配器 adapter 和接收队列 rx_ring
 	struct igb_adapter *adapter = q_vector->adapter;
 	struct igb_ring *rx_ring = q_vector->rx.ring;
 	struct sk_buff *skb = rx_ring->skb;
@@ -8856,11 +8880,13 @@ static int igb_clean_rx_irq(struct igb_q_vector *q_vector, const int budget)
 	int rx_buf_pgcnt;
 
 	/* Frame size depend on rx_ring setup when PAGE_SIZE=4K */
+	//计算接收帧的大小
 #if (PAGE_SIZE < 8192)
 	frame_sz = igb_rx_frame_truesize(rx_ring, 0);
 #endif
 	xdp_init_buff(&xdp, frame_sz, &rx_ring->xdp_rxq);
 
+	//在一个循环中，处理接收队列中的数据包。每次迭代最多处理 budget 个数据包，直到达到 budget 
 	while (likely(total_packets < budget)) {
 		union e1000_adv_rx_desc *rx_desc;
 		struct igb_rx_buffer *rx_buffer;
@@ -8871,10 +8897,11 @@ static int igb_clean_rx_irq(struct igb_q_vector *q_vector, const int budget)
 
 		/* return some buffers to hardware, one at a time is too slow */
 		if (cleaned_count >= IGB_RX_BUFFER_WRITE) {
+			//调用 igb_alloc_rx_buffers 为接收队列分配更多的缓冲区
 			igb_alloc_rx_buffers(rx_ring, cleaned_count);
 			cleaned_count = 0;
 		}
-
+		//从接收队列获取一个描述符并检查它的数据包大小，如果数据包大小为 0，表示没有有效数据包，跳出循环。
 		rx_desc = IGB_RX_DESC(rx_ring, rx_ring->next_to_clean);
 		size = le16_to_cpu(rx_desc->wb.upper.length);
 		if (!size)
@@ -8886,7 +8913,9 @@ static int igb_clean_rx_irq(struct igb_q_vector *q_vector, const int budget)
 		 */
 		dma_rmb();
 
+		//获取接收缓冲区
 		rx_buffer = igb_get_rx_buffer(rx_ring, size, &rx_buf_pgcnt);
+		//获取缓冲区的地址
 		pktbuf = page_address(rx_buffer->page) + rx_buffer->page_offset;
 
 		/* pull rx packet timestamp if available and valid */
@@ -8911,6 +8940,7 @@ static int igb_clean_rx_irq(struct igb_q_vector *q_vector, const int budget)
 			/* At larger PAGE_SIZE, frame_sz depend on len size */
 			xdp.frame_sz = igb_rx_frame_truesize(rx_ring, size);
 #endif
+			//通过 igb_run_xdp 处理数据包
 			skb = igb_run_xdp(adapter, rx_ring, &xdp);
 		}
 
@@ -8959,7 +8989,8 @@ static int igb_clean_rx_irq(struct igb_q_vector *q_vector, const int budget)
 
 		/* populate checksum, timestamp, VLAN, and protocol */
 		igb_process_skb_fields(rx_ring, rx_desc, skb);
-
+		
+		//通过 napi_gro_receive 进行接收报文的合并处理
 		napi_gro_receive(&q_vector->napi, skb);
 
 		/* reset skb pointer */
