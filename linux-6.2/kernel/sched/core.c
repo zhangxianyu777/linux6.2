@@ -2212,31 +2212,39 @@ static void migrate_disable_switch(struct rq *rq, struct task_struct *p)
 	 */
 	__do_set_cpus_allowed(p, &ac);
 }
-
+//禁用任务迁移
 void migrate_disable(void)
 {
 	struct task_struct *p = current;
 
+	//已经禁用
 	if (p->migration_disabled) {
+		//增加引用
 		p->migration_disabled++;
 		return;
 	}
 
+	//禁用抢占
 	preempt_disable();
+	//当前运行队列相应计数增加 ，nr_pinned为禁止任务迁移的任务数。
 	this_rq()->nr_pinned++;
+	//设置迁移禁用标志
 	p->migration_disabled = 1;
+	//恢复抢占
 	preempt_enable();
 }
 EXPORT_SYMBOL_GPL(migrate_disable);
 
+//打开任务迁移
 void migrate_enable(void)
 {
 	struct task_struct *p = current;
 	struct affinity_context ac = {
 		.new_mask  = &p->cpus_mask,
+		//启用迁移标志
 		.flags     = SCA_MIGRATE_ENABLE,
 	};
-
+	//计数减少
 	if (p->migration_disabled > 1) {
 		p->migration_disabled--;
 		return;
@@ -2249,8 +2257,10 @@ void migrate_enable(void)
 	 * Ensure stop_task runs either before or after this, and that
 	 * __set_cpus_allowed_ptr(SCA_MIGRATE_ENABLE) doesn't schedule().
 	 */
+	//禁用抢占
 	preempt_disable();
 	if (p->cpus_ptr != &p->cpus_mask)
+		//设置任务的 CPU 亲和性为当前的 cpus_mask
 		__set_cpus_allowed_ptr(p, &ac);
 	/*
 	 * Mustn't clear migration_disabled() until cpus_ptr points back at the
@@ -2258,8 +2268,11 @@ void migrate_enable(void)
 	 * select_fallback_rq) get confused.
 	 */
 	barrier();
+	//标志置0
 	p->migration_disabled = 0;
+	//减少当前 CPU 上 pinned 任务的数量
 	this_rq()->nr_pinned--;
+	//打开
 	preempt_enable();
 }
 EXPORT_SYMBOL_GPL(migrate_enable);

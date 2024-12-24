@@ -303,6 +303,7 @@ static inline bool vlan_uses_dev(const struct net_device *dev)
  * @ethertype: ether type to check
  *
  * Returns true if the ether type is a vlan ether type.
+ * 检查给定的 ethertype 是否是 VLAN 类型
  */
 static inline bool eth_type_vlan(__be16 ethertype)
 {

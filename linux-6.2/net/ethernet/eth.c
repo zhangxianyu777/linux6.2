@@ -151,6 +151,7 @@ EXPORT_SYMBOL(eth_get_headlen);
  * The rule here is that we
  * assume 802.3 if the type field is short enough to be a length.
  * This is normal practice and works for any 'now in use' protocol.
+ * 确定接收到的以太网帧的协议类型
  */
 __be16 eth_type_trans(struct sk_buff *skb, struct net_device *dev)
 {
@@ -159,19 +160,26 @@ __be16 eth_type_trans(struct sk_buff *skb, struct net_device *dev)
 	const struct ethhdr *eth;
 
 	skb->dev = dev;
+	//设置mac header
 	skb_reset_mac_header(skb);
 
+	//mac头部
 	eth = (struct ethhdr *)skb->data;
+	//移除以太网头部（ETH_HLEN 字节），并调整 skb->data 指针，指向有效负载部分
 	skb_pull_inline(skb, ETH_HLEN);
-
+	//目标地址不匹配设备的 MAC 地址
 	if (unlikely(!ether_addr_equal_64bits(eth->h_dest,
 					      dev->dev_addr))) {
+		//是否是广播地址或多播地址
 		if (unlikely(is_multicast_ether_addr_64bits(eth->h_dest))) {
 			if (ether_addr_equal_64bits(eth->h_dest, dev->broadcast))
+				//设置类型为PACKET_BROADCAST 广播
 				skb->pkt_type = PACKET_BROADCAST;
 			else
+				////设置类型为PACKET_MULTICAST 多播
 				skb->pkt_type = PACKET_MULTICAST;
 		} else {
+			//设置类型为PACKET_OTHERHOST 其他主机包
 			skb->pkt_type = PACKET_OTHERHOST;
 		}
 	}
@@ -182,9 +190,11 @@ __be16 eth_type_trans(struct sk_buff *skb, struct net_device *dev)
 	 * variants has been configured on the receiving interface,
 	 * and if so, set skb->protocol without looking at the packet.
 	 */
+	//网络设备使用 DSA（分布式交换架构）标记
 	if (unlikely(netdev_uses_dsa(dev)))
 		return htons(ETH_P_XDSA);
 
+	//如果以太网协议（eth->h_proto）是 802.3 类型
 	if (likely(eth_proto_is_802_3(eth->h_proto)))
 		return eth->h_proto;
 
@@ -194,6 +204,7 @@ __be16 eth_type_trans(struct sk_buff *skb, struct net_device *dev)
 	 *      layer. We look for FFFF which isn't a used 802.2 SSAP/DSAP. This
 	 *      won't work for fault tolerant netware but does for the rest.
 	 */
+	//检查是否为 IPX 数据包，IPX 可能在没有 802.2 LLC 头部的情况下通过 802.3 帧传输
 	sap = skb_header_pointer(skb, 0, sizeof(*sap), &_service_access_point);
 	if (sap && *sap == 0xFFFF)
 		return htons(ETH_P_802_3);
@@ -201,6 +212,7 @@ __be16 eth_type_trans(struct sk_buff *skb, struct net_device *dev)
 	/*
 	 *      Real 802.2 LLC
 	 */
+	//假定数据包使用 802.2 LLC 协议
 	return htons(ETH_P_802_2);
 }
 EXPORT_SYMBOL(eth_type_trans);

@@ -295,6 +295,7 @@ EXPORT_SYMBOL_GPL(memalloc_socks_key);
  * Set %SOCK_MEMALLOC on a socket for access to emergency reserves.
  * It's the responsibility of the admin to adjust min_free_kbytes
  * to meet the requirements
+ * 设置 socket 的 SOCK_MEMALLOC 标志，使得该 socket 可以访问紧急内存保留区
  */
 void sk_set_memalloc(struct sock *sk)
 {
@@ -304,6 +305,7 @@ void sk_set_memalloc(struct sock *sk)
 }
 EXPORT_SYMBOL_GPL(sk_set_memalloc);
 
+//清除 SOCK_MEMALLOC 标志
 void sk_clear_memalloc(struct sock *sk)
 {
 	sock_reset_flag(sk, SOCK_MEMALLOC);

@@ -110,6 +110,7 @@ static __always_inline void xdp_buff_set_frag_pfmemalloc(struct xdp_buff *xdp)
 	xdp->flags |= XDP_FLAGS_FRAGS_PF_MEMALLOC;
 }
 
+//初始化xdp结构
 static __always_inline void
 xdp_init_buff(struct xdp_buff *xdp, u32 frame_sz, struct xdp_rxq_info *rxq)
 {
@@ -118,15 +119,21 @@ xdp_init_buff(struct xdp_buff *xdp, u32 frame_sz, struct xdp_rxq_info *rxq)
 	xdp->flags = 0;
 }
 
+//填充xdp结构（数据部分）
 static __always_inline void
 xdp_prepare_buff(struct xdp_buff *xdp, unsigned char *hard_start,
 		 int headroom, int data_len, const bool meta_valid)
 {
+	//数据起始指针（从mac开始）
 	unsigned char *data = hard_start + headroom;
 
+	//实际缓冲区起始指针
 	xdp->data_hard_start = hard_start;
+	//数据起始指针
 	xdp->data = data;
+	//数据结束指针
 	xdp->data_end = data + data_len;
+	//存储额外的控制信息或数据包的处理上下文
 	xdp->data_meta = meta_valid ? data : data + 1;
 }
 

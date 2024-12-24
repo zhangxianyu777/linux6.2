@@ -578,25 +578,33 @@ typedef unsigned int (*bpf_dispatcher_fn)(const void *ctx,
 					  unsigned int (*bpf_func)(const void *,
 								   const struct bpf_insn *));
 
+//xdp内部函数
 static __always_inline u32 __bpf_prog_run(const struct bpf_prog *prog,
 					  const void *ctx,
 					  bpf_dispatcher_fn dfunc)
 {
 	u32 ret;
-
+	//确保当前任务在执行期间不会迁移到其他 CPU
 	cant_migrate();
+	//启用了统计功能
 	if (static_branch_unlikely(&bpf_stats_enabled_key)) {
 		struct bpf_prog_stats *stats;
+		//开始实际
 		u64 start = sched_clock();
 		unsigned long flags;
-
+		//实际执行
 		ret = dfunc(ctx, prog->insnsi, prog->bpf_func);
+		//或取当前 CPU 的统计结构体 stats
 		stats = this_cpu_ptr(prog->stats);
+		//某种保护机制（禁用中断 (local_irq_save) 和序列计数器 (syncp->seq) 的写侧机制）
 		flags = u64_stats_update_begin_irqsave(&stats->syncp);
+		//更新调用计数 cnt 
 		u64_stats_inc(&stats->cnt);
+		//更新累计时间
 		u64_stats_add(&stats->nsecs, sched_clock() - start);
 		u64_stats_update_end_irqrestore(&stats->syncp, flags);
 	} else {
+		//直接调用
 		ret = dfunc(ctx, prog->insnsi, prog->bpf_func);
 	}
 	return ret;
@@ -765,6 +773,7 @@ DECLARE_STATIC_KEY_FALSE(bpf_master_redirect_enabled_key);
 
 u32 xdp_master_redirect(struct xdp_buff *xdp);
 
+//xdp内部函数
 static __always_inline u32 bpf_prog_run_xdp(const struct bpf_prog *prog,
 					    struct xdp_buff *xdp)
 {
@@ -772,10 +781,14 @@ static __always_inline u32 bpf_prog_run_xdp(const struct bpf_prog *prog,
 	 * under local_bh_disable(), which provides the needed RCU protection
 	 * for accessing map entries.
 	 */
+	//进一步调用
 	u32 act = __bpf_prog_run(prog, xdp, BPF_DISPATCHER_FUNC(xdp));
 
+	//主设备重定向参数
 	if (static_branch_unlikely(&bpf_master_redirect_enabled_key)) {
+		//为 XDP_TX 操作，检查数据包是否属于绑定网络设备的从设备
 		if (act == XDP_TX && netif_is_bond_slave(xdp->rxq->dev))
+			//重定向操作
 			act = xdp_master_redirect(xdp);
 	}
 

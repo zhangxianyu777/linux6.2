@@ -43,7 +43,7 @@
 /*
  *	These are the defined Ethernet Protocol ID's.
  */
-
+//链路层协议类型
 #define ETH_P_LOOP	0x0060		/* Ethernet Loopback packet	*/
 #define ETH_P_PUP	0x0200		/* Xerox PUP packet		*/
 #define ETH_P_PUPAT	0x0201		/* Xerox PUP Addr Trans packet	*/
@@ -171,8 +171,11 @@
 
 #if __UAPI_DEF_ETHHDR
 struct ethhdr {
+	//目的mac地址
 	unsigned char	h_dest[ETH_ALEN];	/* destination eth addr	*/
+	//源mac地址
 	unsigned char	h_source[ETH_ALEN];	/* source ether addr	*/
+	//上层协议类型
 	__be16		h_proto;		/* packet type ID field	*/
 } __attribute__((packed));
 #endif

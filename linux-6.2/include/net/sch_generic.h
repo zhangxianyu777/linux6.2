@@ -700,6 +700,7 @@ static inline bool skb_at_tc_ingress(const struct sk_buff *skb)
 #endif
 }
 
+//判断是否跳过流量分类
 static inline bool skb_skip_tc_classify(struct sk_buff *skb)
 {
 #ifdef CONFIG_NET_CLS_ACT

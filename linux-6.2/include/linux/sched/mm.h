@@ -336,6 +336,7 @@ static inline void memalloc_nofs_restore(unsigned int flags)
 	current->flags = (current->flags & ~PF_MEMALLOC_NOFS) | flags;
 }
 
+//设置当前进程状态为PF_MEMALLOC，即可以使用紧急内存
 static inline unsigned int memalloc_noreclaim_save(void)
 {
 	unsigned int flags = current->flags & PF_MEMALLOC;
@@ -343,6 +344,7 @@ static inline unsigned int memalloc_noreclaim_save(void)
 	return flags;
 }
 
+//撤销当前进程PF_MEMALLOC状态
 static inline void memalloc_noreclaim_restore(unsigned int flags)
 {
 	current->flags = (current->flags & ~PF_MEMALLOC) | flags;

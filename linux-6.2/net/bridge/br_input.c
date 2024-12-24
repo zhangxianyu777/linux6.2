@@ -411,7 +411,7 @@ forward:
 	case BR_STATE_LEARNING:
 defer_stp_filtering:
 		if (ether_addr_equal(p->br->dev->dev_addr, dest))
-			skb->pkt_type = PACKET_HOST;
+			skb->pkt_type = PACKET_HOST; 
 
 		return nf_hook_bridge_pre(skb, pskb);
 	default:
