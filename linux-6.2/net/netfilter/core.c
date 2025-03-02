@@ -610,19 +610,24 @@ int nf_hook_slow(struct sk_buff *skb, struct nf_hook_state *state,
 	unsigned int verdict;
 	int ret;
 
+	// 遍历所有钩子函数
 	for (; s < e->num_hook_entries; s++) {
 		verdict = nf_hook_entry_hookfn(&e->hooks[s], skb, state);
 		switch (verdict & NF_VERDICT_MASK) {
 		case NF_ACCEPT:
+			// 如果钩子返回接受，则继续下一个钩子
 			break;
 		case NF_DROP:
+			// 如果钩子返回丢弃
 			kfree_skb_reason(skb,
 					 SKB_DROP_REASON_NETFILTER_DROP);
 			ret = NF_DROP_GETERR(verdict);
 			if (ret == 0)
 				ret = -EPERM;
+			// 终止处理并返回丢弃结果
 			return ret;
 		case NF_QUEUE:
+			// 将数据包排队等待后续处理。如果排队成功，继续处理下一个钩子。
 			ret = nf_queue(skb, state, s, verdict);
 			if (ret == 1)
 				continue;

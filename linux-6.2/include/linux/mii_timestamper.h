@@ -43,7 +43,9 @@ struct phy_device;
  * to a mii_timestamper from the probe_channel() callback of their
  * mii_timestamping_ctrl interface.
  */
+//回调接口，用于处理 MII（媒体独立接口）时间戳设备的操作。
 struct mii_timestamper {
+	//请求接收（Rx）数据包的时间戳
 	bool (*rxtstamp)(struct mii_timestamper *mii_ts,
 			 struct sk_buff *skb, int type);
 

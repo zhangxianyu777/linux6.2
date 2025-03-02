@@ -769,7 +769,9 @@ bool rps_may_expire_flow(struct net_device *dev, u16 rxq_index, u32 flow_id,
 #endif /* CONFIG_RPS */
 
 /* This structure contains an instance of an RX queue. */
+//接收队列结构
 struct netdev_rx_queue {
+	//存储与 XDP 接收队列
 	struct xdp_rxq_info		xdp_rxq;
 #ifdef CONFIG_RPS
 	struct rps_map __rcu		*rps_map;
@@ -2015,7 +2017,9 @@ enum netdev_ml_priv_type {
  *	moves out.
  */
 
+//网络设备结构体
 struct net_device {
+	//设备名称
 	char			name[IFNAMSIZ];
 	struct netdev_name_node	*name_node;
 	struct dev_ifalias	__rcu *ifalias;
@@ -2187,8 +2191,10 @@ struct net_device {
 	/* Interface address info used in eth_type_trans() */
 	const unsigned char	*dev_addr;
 
+	//设备接收队列数组
 	struct netdev_rx_queue	*_rx;
 	unsigned int		num_rx_queues;
+	//实际接收队列个数
 	unsigned int		real_num_rx_queues;
 
 	struct bpf_prog __rcu	*xdp_prog;
@@ -2200,6 +2206,7 @@ struct net_device {
  */
 #define GRO_MAX_SIZE		(8 * 65535u)
 	unsigned int		gro_max_size;
+	//用于处理接收到的数据包（skb），在将其传递给协议处理程序之前，进行一些特殊的处理
 	rx_handler_func_t __rcu	*rx_handler;
 	void __rcu		*rx_handler_data;
 
@@ -2337,6 +2344,7 @@ struct net_device {
 #if IS_ENABLED(CONFIG_CGROUP_NET_PRIO)
 	struct netprio_map __rcu *priomap;
 #endif
+	//物理层设备抽象，提供硬件时间戳支持
 	struct phy_device	*phydev;
 	struct sfp_bus		*sfp_bus;
 	struct lock_class_key	*qdisc_tx_busylock;
@@ -3133,11 +3141,15 @@ static inline bool dev_has_header(const struct net_device *dev)
 /*
  * Incoming packets are placed on per-CPU queues
  */
+//cpu上接收数据包结构抽象
 struct softnet_data {
+	//poll函数列表
 	struct list_head	poll_list;
+	//接收队列
 	struct sk_buff_head	process_queue;
 
 	/* stats */
+	//处理包数量
 	unsigned int		processed;
 	unsigned int		time_squeeze;
 #ifdef CONFIG_RPS
@@ -5013,9 +5025,11 @@ static inline bool netif_is_bond_master(const struct net_device *dev)
 {
 	return dev->flags & IFF_MASTER && dev->priv_flags & IFF_BONDING;
 }
-
+//判断网络设备是否是一个 bonding 主机的从设备
 static inline bool netif_is_bond_slave(const struct net_device *dev)
-{
+{	
+	//1、标志位中是否包含 IFF_SLAVE，表明该设备被标记为从设备
+	//2、设备的私有标志位中是否包含 IFF_BONDING，表明该设备属于一个 bonding 设备
 	return dev->flags & IFF_SLAVE && dev->priv_flags & IFF_BONDING;
 }
 

@@ -1697,14 +1697,16 @@ INDIRECT_CALLABLE_DECLARE(struct dst_entry *ipv4_dst_check(struct dst_entry *,
  * This is because we cannot sleep with the original spinlock
  * held.
  */
+//根据不同的状态执行不同的处理策略
 int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 {
 	enum skb_drop_reason reason;
 	struct sock *rsk;
 
+	//TCP_ESTABLISHED 状态处理
 	if (sk->sk_state == TCP_ESTABLISHED) { /* Fast path */
 		struct dst_entry *dst;
-
+		//获取接收目的地信息
 		dst = rcu_dereference_protected(sk->sk_rx_dst,
 						lockdep_sock_is_held(sk));
 
@@ -1718,6 +1720,7 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 				dst_release(dst);
 			}
 		}
+		//处理函数进行数据包的常规 TCP 处理
 		tcp_rcv_established(sk, skb);
 		return 0;
 	}
@@ -1726,6 +1729,7 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 	if (tcp_checksum_complete(skb))
 		goto csum_err;
 
+	//套接字处于 TCP_LISTEN 状态，表示这是一个监听套接字，用于接受新的连接请求
 	if (sk->sk_state == TCP_LISTEN) {
 		struct sock *nsk = tcp_v4_cookie_check(sk, skb);
 
@@ -1741,6 +1745,7 @@ int tcp_v4_do_rcv(struct sock *sk, struct sk_buff *skb)
 	} else
 		sock_rps_save_rxhash(sk, skb);
 
+	//套接字的状态为其他类型（例如 SYN_SENT, SYN_RECV），则调用 tcp_rcv_state_process 处理该数据包
 	if (tcp_rcv_state_process(sk, skb)) {
 		rsk = sk;
 		goto reset;
@@ -1972,6 +1977,7 @@ static void tcp_v4_fill_cb(struct sk_buff *skb, const struct iphdr *iph,
  *	From tcp_input.c
  */
 
+//查找对应socket，根据状态进行不同处理，最后进行接收
 int tcp_v4_rcv(struct sk_buff *skb)
 {
 	struct net *net = dev_net(skb->dev);
@@ -1985,17 +1991,21 @@ int tcp_v4_rcv(struct sk_buff *skb)
 	int ret;
 
 	drop_reason = SKB_DROP_REASON_NOT_SPECIFIED;
+	//如果包不是目标主机包，丢弃
 	if (skb->pkt_type != PACKET_HOST)
 		goto discard_it;
 
 	/* Count it even if it's bad */
+	// 增加接收到的 TCP 包统计
 	__TCP_INC_STATS(net, TCP_MIB_INSEGS);
 
 	if (!pskb_may_pull(skb, sizeof(struct tcphdr)))
 		goto discard_it;
 
+	// 获取 TCP 头部指针
 	th = (const struct tcphdr *)skb->data;
 
+	// 如果 TCP 头部长度无效，丢弃包
 	if (unlikely(th->doff < sizeof(struct tcphdr) / 4)) {
 		drop_reason = SKB_DROP_REASON_PKT_TOO_SMALL;
 		goto bad_packet;
@@ -2008,12 +2018,15 @@ int tcp_v4_rcv(struct sk_buff *skb)
 	 * provided case of th->doff==0 is eliminated.
 	 * So, we defer the checks. */
 
+	// 初始化 TCP 校验和
 	if (skb_checksum_init(skb, IPPROTO_TCP, inet_compute_pseudo))
 		goto csum_error;
 
 	th = (const struct tcphdr *)skb->data;
+	// 获取 IP 头部指针
 	iph = ip_hdr(skb);
 lookup:
+	// 查找对应的 TCP 套接字
 	sk = __inet_lookup_skb(net->ipv4.tcp_death_row.hashinfo,
 			       skb, __tcp_hdrlen(th), th->source,
 			       th->dest, sdif, &refcounted);
@@ -2021,15 +2034,20 @@ lookup:
 		goto no_tcp_socket;
 
 process:
+	//套接字处于 TIME_WAIT 状态
 	if (sk->sk_state == TCP_TIME_WAIT)
 		goto do_time_wait;
 
+	//新建立的连接
 	if (sk->sk_state == TCP_NEW_SYN_RECV) {
+		//// 获取请求套接字
 		struct request_sock *req = inet_reqsk(sk);
 		bool req_stolen = false;
 		struct sock *nsk;
 
+		// 获取监听套接字
 		sk = req->rsk_listener;
+		// IPsec 策略检查
 		if (!xfrm4_policy_check(sk, XFRM_POLICY_IN, skb))
 			drop_reason = SKB_DROP_REASON_XFRM_POLICY;
 		else
@@ -2041,10 +2059,12 @@ process:
 			reqsk_put(req);
 			goto discard_it;
 		}
+		//校验 TCP 校验和
 		if (tcp_checksum_complete(skb)) {
 			reqsk_put(req);
 			goto csum_error;
 		}
+		//套接字状态不是 LISTEN
 		if (unlikely(sk->sk_state != TCP_LISTEN)) {
 			nsk = reuseport_migrate_sock(sk, req_to_sk(req), skb);
 			if (!nsk) {
@@ -2063,6 +2083,7 @@ process:
 		}
 		refcounted = true;
 		nsk = NULL;
+		// 如果没有被过滤，则继续处理
 		if (!tcp_filter(sk, skb)) {
 			th = (const struct tcphdr *)skb->data;
 			iph = ip_hdr(skb);
@@ -2071,6 +2092,7 @@ process:
 		} else {
 			drop_reason = SKB_DROP_REASON_SOCKET_FILTER;
 		}
+		// 如果没有找到新套接字，丢弃包
 		if (!nsk) {
 			reqsk_put(req);
 			if (req_stolen) {
@@ -2085,10 +2107,13 @@ process:
 			}
 			goto discard_and_relse;
 		}
+		// 重置连接跟踪
 		nf_reset_ct(skb);
+		//如果套接字没有变化，恢复回原始套接字
 		if (nsk == sk) {
 			reqsk_put(req);
 			tcp_v4_restore_cb(skb);
+		// 如果是子连接，发送 RST 包
 		} else if (tcp_child_process(sk, nsk, skb)) {
 			tcp_v4_send_reset(nsk, skb);
 			goto discard_and_relse;
@@ -2098,6 +2123,7 @@ process:
 		}
 	}
 
+	//检查包的 TTL（生存时间）是否小于最小 TTL 设置。如果小于最小 TTL，则丢弃该数据包
 	if (static_branch_unlikely(&ip4_min_ttl)) {
 		/* min_ttl can be changed concurrently from do_ip_setsockopt() */
 		if (unlikely(iph->ttl < READ_ONCE(inet_sk(sk)->min_ttl))) {
@@ -2106,11 +2132,13 @@ process:
 		}
 	}
 
+	//是否符合 IPsec 策略
 	if (!xfrm4_policy_check(sk, XFRM_POLICY_IN, skb)) {
 		drop_reason = SKB_DROP_REASON_XFRM_POLICY;
 		goto discard_and_relse;
 	}
 
+	//TCP MD5 校验
 	drop_reason = tcp_inbound_md5_hash(sk, skb, &iph->saddr,
 					   &iph->daddr, AF_INET, dif, sdif);
 	if (drop_reason)
@@ -2118,16 +2146,19 @@ process:
 
 	nf_reset_ct(skb);
 
+	//Socket 过滤检查
 	if (tcp_filter(sk, skb)) {
 		drop_reason = SKB_DROP_REASON_SOCKET_FILTER;
 		goto discard_and_relse;
 	}
+	//TCP 头部解析和回调填充
 	th = (const struct tcphdr *)skb->data;
 	iph = ip_hdr(skb);
 	tcp_v4_fill_cb(skb, iph, th);
 
 	skb->dev = NULL;
 
+	//处于 TCP_LISTEN 状态时，直接调用 tcp_v4_do_rcv 进行接收处理
 	if (sk->sk_state == TCP_LISTEN) {
 		ret = tcp_v4_do_rcv(sk, skb);
 		goto put_and_return;

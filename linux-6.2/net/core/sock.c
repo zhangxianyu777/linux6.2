@@ -295,6 +295,7 @@ EXPORT_SYMBOL_GPL(memalloc_socks_key);
  * Set %SOCK_MEMALLOC on a socket for access to emergency reserves.
  * It's the responsibility of the admin to adjust min_free_kbytes
  * to meet the requirements
+ * 设置 socket 的 SOCK_MEMALLOC 标志，使得该 socket 可以访问紧急内存保留区
  */
 void sk_set_memalloc(struct sock *sk)
 {
@@ -304,6 +305,7 @@ void sk_set_memalloc(struct sock *sk)
 }
 EXPORT_SYMBOL_GPL(sk_set_memalloc);
 
+//清除 SOCK_MEMALLOC 标志
 void sk_clear_memalloc(struct sock *sk)
 {
 	sock_reset_flag(sk, SOCK_MEMALLOC);
@@ -2085,6 +2087,7 @@ static void sk_prot_free(struct proto *prot, struct sock *sk)
  *	@prot: struct proto associated with this new sock instance
  *	@kern: is this to be a kernel socket?
  */
+//申请sock对象
 struct sock *sk_alloc(struct net *net, int family, gfp_t priority,
 		      struct proto *prot, int kern)
 {
@@ -2963,13 +2966,17 @@ EXPORT_SYMBOL_GPL(__sk_flush_backlog);
  * We check receive queue before schedule() only as optimization;
  * it is very likely that release_sock() added new data.
  */
+//没有接收到足够的数据，进行阻塞
 int sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb)
 {
+	//绑定回调函数
 	DEFINE_WAIT_FUNC(wait, woken_wake_function);
 	int rc;
-
+	//当前进程关联到等待队列上
 	add_wait_queue(sk_sleep(sk), &wait);
+	//设置进程状态
 	sk_set_bit(SOCKWQ_ASYNC_WAITDATA, sk);
+	//阻塞操作
 	rc = sk_wait_event(sk, timeo, skb_peek_tail(&sk->sk_receive_queue) != skb, &wait);
 	sk_clear_bit(SOCKWQ_ASYNC_WAITDATA, sk);
 	remove_wait_queue(sk_sleep(sk), &wait);
@@ -3288,14 +3295,16 @@ static void sock_def_error_report(struct sock *sk)
 	sk_wake_async(sk, SOCK_WAKE_IO, POLL_ERR);
 	rcu_read_unlock();
 }
-
+//唤醒socket上等待的用户进程
 void sock_def_readable(struct sock *sk)
 {
 	struct socket_wq *wq;
 
 	rcu_read_lock();
 	wq = rcu_dereference(sk->sk_wq);
+	//有进程在此socket的等待队列
 	if (skwq_has_sleeper(wq))
+	//唤醒等待队列上的进程
 		wake_up_interruptible_sync_poll(&wq->wait, EPOLLIN | EPOLLPRI |
 						EPOLLRDNORM | EPOLLRDBAND);
 	sk_wake_async(sk, SOCK_WAKE_WAITD, POLL_IN);
@@ -3381,6 +3390,7 @@ void sk_stop_timer_sync(struct sock *sk, struct timer_list *timer)
 }
 EXPORT_SYMBOL(sk_stop_timer_sync);
 
+//初始化sk结构
 void sock_init_data(struct socket *sock, struct sock *sk)
 {
 	sk_init_common(sk);

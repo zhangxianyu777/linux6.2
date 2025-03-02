@@ -156,7 +156,9 @@
 
 
 static DEFINE_SPINLOCK(ptype_lock);
+//存储协议hash表
 struct list_head ptype_base[PTYPE_HASH_SIZE] __read_mostly;
+//存储协议链表
 struct list_head ptype_all __read_mostly;	/* Taps */
 
 static int netif_rx_internal(struct sk_buff *skb);
@@ -423,8 +425,9 @@ static RAW_NOTIFIER_HEAD(netdev_chain);
  *	Device drivers call our routines to queue packets here. We empty the
  *	queue in the local softnet handler.
  */
-
+//定义一个按 CPU 进行对齐的每 CPU 数据结构。
 DEFINE_PER_CPU_ALIGNED(struct softnet_data, softnet_data);
+//导出为一个符号，使其能够被内核其他模块访问
 EXPORT_PER_CPU_SYMBOL(softnet_data);
 
 #ifdef CONFIG_LOCKDEP
@@ -536,9 +539,11 @@ static inline void netdev_set_addr_lockdep_class(struct net_device *dev)
 //将协议ID添加到ptype_base哈希表中
 static inline struct list_head *ptype_head(const struct packet_type *pt)
 {
+	//ip_packet_type 的 type 为 ETH_P_IP
 	if (pt->type == htons(ETH_P_ALL))
 		return pt->dev ? &pt->dev->ptype_all : &ptype_all;
 	else
+	//ip_packet_type 未指定dev ，存储到ptype_base中
 		return pt->dev ? &pt->dev->ptype_specific :
 				 &ptype_base[ntohs(pt->type) & PTYPE_HASH_MASK];
 }
@@ -559,9 +564,11 @@ static inline struct list_head *ptype_head(const struct packet_type *pt)
 //将ip_packet_type结构体注册到ptype_base哈希表中
 void dev_add_pack(struct packet_type *pt)
 {
+	//获取到ip_packet_type 所属的链表头
 	struct list_head *head = ptype_head(pt);
 
 	spin_lock(&ptype_lock);
+	//将其与pt中的list相绑定
 	list_add_rcu(&pt->list, head);
 	spin_unlock(&ptype_lock);
 }
@@ -2106,9 +2113,13 @@ static inline void net_timestamp_set(struct sk_buff *skb)
 		skb->tstamp = ktime_get_real();
 }
 
+//根据条件 COND 判断是否应该为给定的 skb添加时间戳
 #define net_timestamp_check(COND, SKB)				\
+	//netstamp_needed_key控制
 	if (static_branch_unlikely(&netstamp_needed_key)) {	\
+		//满足COND条件且没有赋时间
 		if ((COND) && !(SKB)->tstamp)			\
+			//设置为实时时间
 			(SKB)->tstamp = ktime_get_real();	\
 	}							\
 
@@ -2166,16 +2177,20 @@ int dev_forward_skb_nomtu(struct net_device *dev, struct sk_buff *skb)
 	return __dev_forward_skb2(dev, skb, false) ?: netif_rx_internal(skb);
 }
 
+//通过一个指定的 packet_type 结构调用相应的处理函数
 static inline int deliver_skb(struct sk_buff *skb,
 			      struct packet_type *pt_prev,
 			      struct net_device *orig_dev)
 {
+	//被拆分的数据包
 	if (unlikely(skb_orphan_frags_rx(skb, GFP_ATOMIC)))
 		return -ENOMEM;
+	//结构引用计数加一
 	refcount_inc(&skb->users);
 	return pt_prev->func(skb, skb->dev, pt_prev, orig_dev);
 }
 
+//处理之前遗留的pt_prev，并遍历相应的链表且进入进行执行
 static inline void deliver_ptype_list_skb(struct sk_buff *skb,
 					  struct packet_type **pt,
 					  struct net_device *orig_dev,
@@ -4688,16 +4703,20 @@ drop:
 	return NET_RX_DROP;
 }
 
+//获取设备接收队列
 static struct netdev_rx_queue *netif_get_rxqueue(struct sk_buff *skb)
 {
 	struct net_device *dev = skb->dev;
 	struct netdev_rx_queue *rxqueue;
 
+	//设备接收队列数组
 	rxqueue = dev->_rx;
 
+	//接收到的 skb 是否记录了其所在的硬件接收队列
 	if (skb_rx_queue_recorded(skb)) {
+		//获取实际队列地址（多队列时）
 		u16 index = skb_get_rx_queue(skb);
-
+		//索引大于实际接收队列长度
 		if (unlikely(index >= dev->real_num_rx_queues)) {
 			WARN_ONCE(dev->real_num_rx_queues > 1,
 				  "%s received packet on queue %u, but number "
@@ -4706,11 +4725,13 @@ static struct netdev_rx_queue *netif_get_rxqueue(struct sk_buff *skb)
 
 			return rxqueue; /* Return first rxqueue */
 		}
+		//加上索引成为实际地址
 		rxqueue += index;
 	}
 	return rxqueue;
 }
 
+//通用模式收包XDP内部流程，用以控制xdp更改数据带来的数据不一致问题
 u32 bpf_prog_run_generic_xdp(struct sk_buff *skb, struct xdp_buff *xdp,
 			     struct bpf_prog *xdp_prog)
 {
@@ -4726,54 +4747,82 @@ u32 bpf_prog_run_generic_xdp(struct sk_buff *skb, struct xdp_buff *xdp,
 	/* The XDP program wants to see the packet starting at the MAC
 	 * header.
 	 */
+	//MAC 层头部的长度
 	mac_len = skb->data - skb_mac_header(skb);
+	//实际起始地址
 	hard_start = skb->data - skb_headroom(skb);
 
 	/* SKB "head" area always have tailroom for skb_shared_info */
+	//线性缓冲区大小
 	frame_sz = (void *)skb_end_pointer(skb) - hard_start;
+	//将大小加上skb_shared_info（数据区块的附加信息）
 	frame_sz += SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
 
+	//获取接收队列地址
 	rxqueue = netif_get_rxqueue(skb);
+	//初始化xdp结构，填充线性缓冲区大小、XDP接收队列 、flag
 	xdp_init_buff(xdp, frame_sz, &rxqueue->xdp_rxq);
+	//填充xdp数据部分结构 xdp、实际起始地址、headroom-mac长度（填充后mac地址起始地址偏移）、实际线性区+mac长度
 	xdp_prepare_buff(xdp, hard_start, skb_headroom(skb) - mac_len,
 			 skb_headlen(skb) + mac_len, true);
 
+	//结束指针
 	orig_data_end = xdp->data_end;
+	//数据开始指针（mac开始）
 	orig_data = xdp->data;
+	//获取mac头部
 	eth = (struct ethhdr *)xdp->data;
+	//检查目标 MAC 地址是否等于网络设备的 MAC 地址（即是否发往本设备）
 	orig_host = ether_addr_equal_64bits(eth->h_dest, skb->dev->dev_addr);
+	//检查目标 MAC 地址是否是多播地址（即是否为广播或组播）
 	orig_bcast = is_multicast_ether_addr_64bits(eth->h_dest);
+	//上层协议类型
 	orig_eth_type = eth->h_proto;
 
+	//实际处理
 	act = bpf_prog_run_xdp(xdp_prog, xdp);
 
 	/* check if bpf_xdp_adjust_head was used */
+	//检查是否通过 bpf_xdp_adjust_head 修改了 XDP 数据指针 xdp->data 的情况
+	//如有偏移，通过偏移量调整 skb 数据指针，保持与 xdp->data 的一致性。
 	off = xdp->data - orig_data;
 	if (off) {
 		if (off > 0)
 			__skb_pull(skb, off);
 		else if (off < 0)
 			__skb_push(skb, -off);
-
+		//skb中mac长度进行适配
 		skb->mac_header += off;
+		//重新设置skb的网络层头部，因为data地址变了
 		skb_reset_network_header(skb);
 	}
 
 	/* check if bpf_xdp_adjust_tail was used */
+	//检查是否通过 bpf_xdp_adjust_tail 修改了 XDP 数据指针
+	//根据偏移调整skb
 	off = xdp->data_end - orig_data_end;
 	if (off != 0) {
+		//调整skb->tail
 		skb_set_tail_pointer(skb, xdp->data_end - xdp->data);
+		//off为正（data_end>orig_data_end）则增长，为负则减小
 		skb->len += off; /* positive on grow, negative on shrink */
 	}
 
 	/* check if XDP changed eth hdr such SKB needs update */
+	//检查和更新 XDP 修改后的以太网头部
 	eth = (struct ethhdr *)xdp->data;
+	//以太网帧类型字段是否被修改
 	if ((orig_eth_type != eth->h_proto) ||
+		//检查是否MAC地址是否被修改
 	    (orig_host != ether_addr_equal_64bits(eth->h_dest,
 						  skb->dev->dev_addr)) ||
+		//检查目的 MAC 地址是否变成组播地址
 	    (orig_bcast != is_multicast_ether_addr_64bits(eth->h_dest))) {
+		//将skb移动以包含以太网头部，便于eth_type_trans中获取mac头
 		__skb_push(skb, ETH_HLEN);
+		//类型更改为本机包
 		skb->pkt_type = PACKET_HOST;
+		//解析以太网帧类型字段 h_proto，将其转换为 skb->protocol
 		skb->protocol = eth_type_trans(skb, skb->dev);
 	}
 
@@ -4799,6 +4848,7 @@ u32 bpf_prog_run_generic_xdp(struct sk_buff *skb, struct xdp_buff *xdp,
 	return act;
 }
 
+//通用模式收包XDP内部流程，用以确保skb有足够空间并调整为线性
 static u32 netif_receive_generic_xdp(struct sk_buff *skb,
 				     struct xdp_buff *xdp,
 				     struct bpf_prog *xdp_prog)
@@ -4808,29 +4858,37 @@ static u32 netif_receive_generic_xdp(struct sk_buff *skb,
 	/* Reinjected packets coming from act_mirred or similar should
 	 * not get XDP generic processing.
 	 */
+	//已经被重定向，通过skb->redirected标志位判断
 	if (skb_is_redirected(skb))
 		return XDP_PASS;
 
 	/* XDP packets must be linear and must have sufficient headroom
 	 * of XDP_PACKET_HEADROOM bytes. This is the guarantee that also
 	 * native XDP provides, thus we need to do it here as well.
+	 * XDP的包必须是线性的，且拥有足够的头部空间
 	 */
+	//1、是否为克隆的 2、是否是非线性的 3、头部长度少于XDP标准
 	if (skb_cloned(skb) || skb_is_nonlinear(skb) ||
 	    skb_headroom(skb) < XDP_PACKET_HEADROOM) {
+		//缺少的空间
 		int hroom = XDP_PACKET_HEADROOM - skb_headroom(skb);
+		//线性化所需的尾部空间 tailroom本身不存在数据，用作预留空间
 		int troom = skb->tail + skb->data_len - skb->end;
 
 		/* In case we have to go down the path and also linearize,
 		 * then lets do the pskb_expand_head() work just once here.
 		 */
+		//扩充skb的空间大小。headroom扩充nhead大小，tailroom扩充ntail大小。
 		if (pskb_expand_head(skb,
 				     hroom > 0 ? ALIGN(hroom, NET_SKB_PAD) : 0,
 				     troom > 0 ? troom + 128 : 0, GFP_ATOMIC))
 			goto do_drop;
+		//线性处理
 		if (skb_linearize(skb))
 			goto do_drop;
 	}
 
+	//实际处理
 	act = bpf_prog_run_generic_xdp(skb, xdp, xdp_prog);
 	switch (act) {
 	case XDP_REDIRECT:
@@ -4838,9 +4896,11 @@ static u32 netif_receive_generic_xdp(struct sk_buff *skb,
 	case XDP_PASS:
 		break;
 	default:
+		//无效的动作
 		bpf_warn_invalid_xdp_action(skb->dev, xdp_prog, act);
 		fallthrough;
 	case XDP_ABORTED:
+		//程序异常
 		trace_xdp_exception(skb->dev, xdp_prog, act);
 		fallthrough;
 	case XDP_DROP:
@@ -4881,25 +4941,30 @@ void generic_xdp_tx(struct sk_buff *skb, struct bpf_prog *xdp_prog)
 	}
 }
 
+//定义generic_xdp_needed_key 变量，初值为false
 static DEFINE_STATIC_KEY_FALSE(generic_xdp_needed_key);
 
+//xdp流程
 int do_xdp_generic(struct bpf_prog *xdp_prog, struct sk_buff *skb)
 {
 	if (xdp_prog) {
 		struct xdp_buff xdp;
 		u32 act;
 		int err;
-
+		
+		//收包XDP实际流程
 		act = netif_receive_generic_xdp(skb, &xdp, xdp_prog);
 		if (act != XDP_PASS) {
 			switch (act) {
 			case XDP_REDIRECT:
+				//重定向操作
 				err = xdp_do_generic_redirect(skb->dev, skb,
 							      &xdp, xdp_prog);
 				if (err)
 					goto out_redir;
 				break;
 			case XDP_TX:
+				//发送操作
 				generic_xdp_tx(skb, xdp_prog);
 				break;
 			}
@@ -5263,6 +5328,7 @@ static inline int nf_ingress(struct sk_buff *skb, struct packet_type **pt_prev,
 	return 0;
 }
 
+//链路层收包核心函数逻辑，用于设置头部、XDP、VLAN、tc等
 static int __netif_receive_skb_core(struct sk_buff **pskb, bool pfmemalloc,
 				    struct packet_type **ppt_prev)
 {
@@ -5274,61 +5340,82 @@ static int __netif_receive_skb_core(struct sk_buff **pskb, bool pfmemalloc,
 	int ret = NET_RX_DROP;
 	__be16 type;
 
+	//未配置netdev_tstamp_prequeue时在此处配置时间戳，见函数netif_receive_skb_internal
 	net_timestamp_check(!READ_ONCE(netdev_tstamp_prequeue), skb);
 
+	//netif_receive_skb tracepoint触发位置
 	trace_netif_receive_skb(skb);
 
+	//将接收此skb的设备指针记录到orig_dev
 	orig_dev = skb->dev;
 
+	//设置skb的网络层头部
 	skb_reset_network_header(skb);
+	//检查skb的传输层头部
 	if (!skb_transport_header_was_set(skb))
+		//设置skb的网络层头部
 		skb_reset_transport_header(skb);
+
+	//设置skb的链路层头部
 	skb_reset_mac_len(skb);
 
 	pt_prev = NULL;
 
 another_round:
+	//赋值为接收到数据包设备的接口索引
 	skb->skb_iif = skb->dev->ifindex;
 
+	//增加当前cpu中softnet_data的接收包计数
 	__this_cpu_inc(softnet_data.processed);
 
+	//检查generic_xdp_needed_key，其中存储的是xdp prog数量 执行XDP相应操作
 	if (static_branch_unlikely(&generic_xdp_needed_key)) {
 		int ret2;
 
+		//禁止任务迁移
 		migrate_disable();
+		//XDP流程
 		ret2 = do_xdp_generic(rcu_dereference(skb->dev->xdp_prog), skb);
+		//打开任务迁移
 		migrate_enable();
-
+		//返回结果不为XDP_PASS
 		if (ret2 != XDP_PASS) {
 			ret = NET_RX_DROP;
 			goto out;
 		}
 	}
-
+	
+	//协议类型是否为 VLAN 类型 skb->protocol为ETH_P_8021Q/ETH_P_8021AD
 	if (eth_type_vlan(skb->protocol)) {
+		//修改数据包的 skb结构，去掉 VLAN 标签并返回新的 skb
 		skb = skb_vlan_untag(skb);
 		if (unlikely(!skb))
 			goto out;
 	}
 
+	//是否需要跳过流量控制分类，CONFIG_NET_CLS_ACT宏及skb->tc_skip_classify控制
 	if (skb_skip_tc_classify(skb))
 		goto skip_classify;
 
+	//高优先级内存分配
 	if (pfmemalloc)
 		goto skip_taps;
 
+	//遍历ptype_all链表的每个对象，进行执行 （tcpdump？）
 	list_for_each_entry_rcu(ptype, &ptype_all, list) {
 		if (pt_prev)
 			ret = deliver_skb(skb, pt_prev, orig_dev);
 		pt_prev = ptype;
 	}
 
+	//遍历skb->dev->ptype_all的每个对象，进行执行
 	list_for_each_entry_rcu(ptype, &skb->dev->ptype_all, list) {
 		if (pt_prev)
 			ret = deliver_skb(skb, pt_prev, orig_dev);
 		pt_prev = ptype;
 	}
 
+//ingress流控相关
 skip_taps:
 #ifdef CONFIG_NET_INGRESS
 	if (static_branch_unlikely(&ingress_needed_key)) {
@@ -5347,11 +5434,12 @@ skip_taps:
 			goto out;
 	}
 #endif
+	//skb->redirected置0
 	skb_reset_redirect(skb);
 skip_classify:
 	if (pfmemalloc && !skb_pfmemalloc_protocol(skb))
 		goto drop;
-
+	//数据包是否包含 VLAN 标签
 	if (skb_vlan_tag_present(skb)) {
 		if (pt_prev) {
 			ret = deliver_skb(skb, pt_prev, orig_dev);
@@ -5363,6 +5451,8 @@ skip_classify:
 			goto out;
 	}
 
+	//而网桥端口设备的rx_handler是被设置的
+	//根据网络接口的接收处理器（rx_handler）来决定如何进一步处理该数据包
 	rx_handler = rcu_dereference(skb->dev->rx_handler);
 	if (rx_handler) {
 		if (pt_prev) {
@@ -5370,14 +5460,18 @@ skip_classify:
 			pt_prev = NULL;
 		}
 		switch (rx_handler(&skb)) {
+		//rx_handler 完全处理了 skb，即不再需要其他处理程序时，返回此值
 		case RX_HANDLER_CONSUMED:
 			ret = NET_RX_SUCCESS;
 			goto out;
+		// rx_handler 修改了 skb->dev
 		case RX_HANDLER_ANOTHER:
 			goto another_round;
+		//当 rx_handler 决定 skb 只应该交给与 skb->dev 完全匹配的协议处理程序时
 		case RX_HANDLER_EXACT:
 			deliver_exact = true;
 			break;
+		//继续传递给后续处理程序
 		case RX_HANDLER_PASS:
 			break;
 		default:
@@ -5422,18 +5516,22 @@ check_vlan_id:
 		__vlan_hwaccel_clear_tag(skb);
 	}
 
+	//赋值协议
 	type = skb->protocol;
 
 	/* deliver only exact match when indicated */
+	//遍历ptype_base 表（ipv4）
 	if (likely(!deliver_exact)) {
 		deliver_ptype_list_skb(skb, &pt_prev, orig_dev, type,
 				       &ptype_base[ntohs(type) &
 						   PTYPE_HASH_MASK]);
 	}
 
+	//遍历pt->dev->ptype_specific
 	deliver_ptype_list_skb(skb, &pt_prev, orig_dev, type,
 			       &orig_dev->ptype_specific);
 
+	//遍历新skb中的链表 skb->dev->ptype_specific
 	if (unlikely(skb->dev != orig_dev)) {
 		deliver_ptype_list_skb(skb, &pt_prev, orig_dev, type,
 				       &skb->dev->ptype_specific);
@@ -5442,6 +5540,7 @@ check_vlan_id:
 	if (pt_prev) {
 		if (unlikely(skb_orphan_frags_rx(skb, GFP_ATOMIC)))
 			goto drop;
+		//最终将最后一个未处理结构传出
 		*ppt_prev = pt_prev;
 	} else {
 drop:
@@ -5467,14 +5566,18 @@ out:
 	return ret;
 }
 
+//链路层收包内部函数，用于调用核心函数，并通过pt_prev进行下一步跳转
 static int __netif_receive_skb_one_core(struct sk_buff *skb, bool pfmemalloc)
 {
 	struct net_device *orig_dev = skb->dev;
 	struct packet_type *pt_prev = NULL;
 	int ret;
 
+	//核心处理，获取最后的pt_prev类型
 	ret = __netif_receive_skb_core(&skb, pfmemalloc, &pt_prev);
 	if (pt_prev)
+		//通过pt_prev进行下一步跳转
+		//此函数执行遗留的pt_prev->func，如果打开CONFIG_RETPOLINE此做法可以避免 retpoline 带来的性能开销
 		ret = INDIRECT_CALL_INET(pt_prev->func, ipv6_rcv, ip_rcv, skb,
 					 skb->dev, pt_prev, orig_dev);
 	return ret;
@@ -5568,11 +5671,14 @@ static void __netif_receive_skb_list_core(struct list_head *head, bool pfmemallo
 	/* dispatch final sublist */
 	__netif_receive_skb_list_ptype(&sublist, pt_curr, od_curr);
 }
-
+//链路层接收数据包的内部函数，检查 skb 是否为PFMEMALLOC类型（指示当前的内存分配操作属于高优先级的、受保护的内存分配上下文）
 static int __netif_receive_skb(struct sk_buff *skb)
 {
 	int ret;
 
+	// 检查当前是否是 PF_MEMALLOC 套接字且 skb 是 PF_MEMALLOC 类型
+	//sk_memalloc_socks是CONFIG_NET被配置时才有示例（检查有权使用reserved内存区的socket连接数），未被配置是直接返回0
+	//skb_pfmemalloc用来判断skb是否被置上了PFMEMALLOC标识
 	if (sk_memalloc_socks() && skb_pfmemalloc(skb)) {
 		unsigned int noreclaim_flag;
 
@@ -5584,11 +5690,15 @@ static int __netif_receive_skb(struct sk_buff *skb)
 		 *
 		 * Use PF_MEMALLOC as this saves us from propagating the allocation
 		 * context down to all allocation sites.
+		 * PFMEMALLOC skbs是特殊的，只应交付给 SOCK_MEMALLOC 套接字、不应该被用户空间访问、使用有界的内存
 		 */
+		//将当前进程置上PF_MEMALLOC标识，表示允许使用reserved内存不用考虑水位问题
 		noreclaim_flag = memalloc_noreclaim_save();
 		ret = __netif_receive_skb_one_core(skb, true);
+		//撤销当前进程的PF_MEMALLOC标识
 		memalloc_noreclaim_restore(noreclaim_flag);
 	} else
+		//下一步处理
 		ret = __netif_receive_skb_one_core(skb, false);
 
 	return ret;
@@ -5624,23 +5734,32 @@ static void __netif_receive_skb_list(struct list_head *head)
 		memalloc_noreclaim_restore(noreclaim_flag);
 }
 
+//xdp初始化
 static int generic_xdp_install(struct net_device *dev, struct netdev_bpf *xdp)
 {
+	//获取设备的xdp程序
 	struct bpf_prog *old = rtnl_dereference(dev->xdp_prog);
 	struct bpf_prog *new = xdp->prog;
 	int ret = 0;
 
+	//判断xdp命令
 	switch (xdp->command) {
+	//设置新的XDP prog
 	case XDP_SETUP_PROG:
+		//xdp->prog赋给dev->xdp_prog
 		rcu_assign_pointer(dev->xdp_prog, new);
 		if (old)
 			bpf_prog_put(old);
 
 		if (old && !new) {
+			//generic_xdp_needed_key计数减一
 			static_branch_dec(&generic_xdp_needed_key);
 		} else if (new && !old) {
+			//generic_xdp_needed_key计数加一
 			static_branch_inc(&generic_xdp_needed_key);
+			//禁用 LRO 机制（接收大包时合并数据包）
 			dev_disable_lro(dev);
+			//禁用GRO机制
 			dev_disable_gro_hw(dev);
 		}
 		break;
@@ -5653,16 +5772,25 @@ static int generic_xdp_install(struct net_device *dev, struct netdev_bpf *xdp)
 	return ret;
 }
 
+//链路层处理接收到的网络数据包的内部函数,根据参数配置增加时间戳到skb->tstamp
 static int netif_receive_skb_internal(struct sk_buff *skb)
 {
 	int ret;
 
+	//时间戳检查 netdev_tstamp_prequeue用于控制和管理网络设备的时间戳预处理机制，其是编译参数，配置后在此处赋时间戳
+	/*
+	netdev_tstamp_prequeue用于控制和管理网络设备的时间戳预处理机制，其是编译参数
+	关闭时接收的数据包的时间戳在RPS程序处理之后进行标记，这样有可能时间戳会不够准确；打开时时间戳会尽可能早的标记
+	*/
 	net_timestamp_check(READ_ONCE(netdev_tstamp_prequeue), skb);
 
+	//硬件时间戳 当CONFIG_NETWORK_PHY_TIMESTAMPING配置为1时触发 允许网络设备使用硬件时间戳功能 ，
+	//调用skb->dev->phydev->mii_ts->rxtstamp()函数
 	if (skb_defer_rx_timestamp(skb))
 		return NET_RX_SUCCESS;
 
 	rcu_read_lock();
+	//RPS是一种将接收到的包分配给特定 CPU 核心处理的机制
 #ifdef CONFIG_RPS
 	if (static_branch_unlikely(&rps_needed)) {
 		struct rps_dev_flow voidflow, *rflow = &voidflow;
@@ -5675,6 +5803,7 @@ static int netif_receive_skb_internal(struct sk_buff *skb)
 		}
 	}
 #endif
+	//进一步处理
 	ret = __netif_receive_skb(skb);
 	rcu_read_unlock();
 	return ret;
@@ -5724,16 +5853,20 @@ void netif_receive_skb_list_internal(struct list_head *head)
  *	This function may only be called from softirq context and interrupts
  *	should be enabled.
  *
+ * 	此函数只能在 softirq 上下文中调用，并且应该启用中断
  *	Return values (usually ignored):
  *	NET_RX_SUCCESS: no congestion
  *	NET_RX_DROP: packet was dropped
+ *  处理从网络设备接收到的网络数据包
  */
 int netif_receive_skb(struct sk_buff *skb)
 {
 	int ret;
 
+	//tracepoint
 	trace_netif_receive_skb_entry(skb);
 
+	//内部函数
 	ret = netif_receive_skb_internal(skb);
 	trace_netif_receive_skb_exit(ret);
 

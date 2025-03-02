@@ -613,6 +613,7 @@ struct macsec_ops;
  * Contains some infrastructure for polling and interrupt
  * handling, as well as handling shifts in PHY hardware state
  */
+//物理层设备实体
 struct phy_device {
 	struct mdio_device mdio;
 
@@ -720,6 +721,7 @@ struct phy_device {
 	struct sfp_bus *sfp_bus;
 	struct phylink *phylink;
 	struct net_device *attached_dev;
+	//时间戳回调函数的指针，存储与硬件时间戳处理相关的回调函数
 	struct mii_timestamper *mii_ts;
 	struct pse_control *psec;
 

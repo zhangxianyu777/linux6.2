@@ -258,6 +258,7 @@
 /* Maximum value in skb->csum_level */
 #define SKB_MAX_CSUM_LEVEL	3
 
+//16字节对齐
 #define SKB_DATA_ALIGN(X)	ALIGN(X, SMP_CACHE_BYTES)
 #define SKB_WITH_OVERHEAD(X)	\
 	((X) - SKB_DATA_ALIGN(sizeof(struct skb_shared_info)))
@@ -568,6 +569,7 @@ void mm_unaccount_pinned_pages(struct mmpin *mmp);
 
 /* This data is invariant across clones and lives at
  * the end of the header data, ie. at skb->end.
+ * 数据区块的附加信息，处于skb的end，保存非线性区数据地址
  */
 struct skb_shared_info {
 	__u8		flags;
@@ -839,7 +841,7 @@ typedef unsigned char *sk_buff_data_t;
  *	@users: User count - see {datagram,tcp}.c
  *	@extensions: allocated extensions, valid if active_extensions is nonzero
  */
-
+//数据包结构
 struct sk_buff {
 	union {
 		struct {
@@ -848,6 +850,7 @@ struct sk_buff {
 			struct sk_buff		*prev;
 
 			union {
+				//到达/发出的设备
 				struct net_device	*dev;
 				/* Some protocols might use this space to store information,
 				 * while device pointer would be NULL.
@@ -867,6 +870,7 @@ struct sk_buff {
 	};
 
 	union {
+		//到达/发送的时间
 		ktime_t		tstamp;
 		u64		skb_mstamp_ns; /* earliest departure time */
 	};
@@ -893,6 +897,7 @@ struct sk_buff {
 	unsigned long		 _nfct;
 #endif
 	unsigned int		len,
+				//非线性部分数据长度（fragments）
 				data_len;
 	__u16			mac_len,
 				hdr_len;
@@ -900,6 +905,7 @@ struct sk_buff {
 	/* Following fields are _not_ copied in __copy_skb_header()
 	 * Note that queue_mapping is here mostly to fill a hole.
 	 */
+	//多队列设备的队列映射
 	__u16			queue_mapping;
 
 /* if you move cloned around you also must adapt those constants */
@@ -932,6 +938,7 @@ struct sk_buff {
 	/* private: */
 	__u8			__pkt_type_offset[0];
 	/* public: */
+	//包类型
 	__u8			pkt_type:3; /* see PKT_TYPE_MAX */
 	__u8			ignore_df:1;
 	__u8			nf_trace:1;
@@ -996,6 +1003,7 @@ struct sk_buff {
 		};
 	};
 	__u32			priority;
+	//收到网络数据包的设备的接口索引
 	int			skb_iif;
 	__u32			hash;
 	union {
@@ -1032,6 +1040,7 @@ struct sk_buff {
 
 	__be16			protocol;
 	__u16			transport_header;
+	//网络层头部偏移
 	__u16			network_header;
 	__u16			mac_header;
 
@@ -1075,6 +1084,7 @@ struct sk_buff {
 #endif
 #define PKT_VLAN_PRESENT_OFFSET	offsetof(struct sk_buff, __pkt_vlan_present_offset)
 
+//编译选项 编译内核时加上 –D __KERNEL__
 #ifdef __KERNEL__
 /*
  *	Handling routines are only of interest to the kernel
@@ -1087,6 +1097,7 @@ struct sk_buff {
 /**
  * skb_pfmemalloc - Test if the skb was allocated from PFMEMALLOC reserves
  * @skb: buffer
+ * 判断skb是否被置上了PFMEMALLOC标识（可使用系统保留的紧急内存部分）
  */
 static inline bool skb_pfmemalloc(const struct sk_buff *skb)
 {
@@ -1578,6 +1589,7 @@ static inline void skb_copy_decrypted(struct sk_buff *to,
 }
 
 #ifdef NET_SKBUFF_DATA_USES_OFFSET
+//线性区结束指针
 static inline unsigned char *skb_end_pointer(const struct sk_buff *skb)
 {
 	return skb->head + skb->end;
@@ -1864,9 +1876,11 @@ static inline struct sk_buff *skb_get(struct sk_buff *skb)
  *	Returns true if the buffer was generated with skb_clone() and is
  *	one of multiple shared copies of the buffer. Cloned buffers are
  *	shared data so must not be written to under normal circumstances.
+ * skb是否是一个克隆数据包
  */
 static inline int skb_cloned(const struct sk_buff *skb)
 {
+	//1、skb->cloned标志位  2、共享信息结构的引用计数（低位掩码下）不为1
 	return skb->cloned &&
 	       (atomic_read(&skb_shinfo(skb)->dataref) & SKB_DATAREF_MASK) != 1;
 }
@@ -2361,12 +2375,13 @@ static inline struct sk_buff *__skb_dequeue_tail(struct sk_buff_head *list)
 }
 struct sk_buff *skb_dequeue_tail(struct sk_buff_head *list);
 
-
+//skb是否为线性的，skb->data_len字段用以标识非线性部分（fragments）的长度
 static inline bool skb_is_nonlinear(const struct sk_buff *skb)
 {
 	return skb->data_len;
 }
 
+//skb线性区长度（data-tail）
 static inline unsigned int skb_headlen(const struct sk_buff *skb)
 {
 	return skb->len - skb->data_len;
@@ -2497,9 +2512,11 @@ static inline void skb_reset_tail_pointer(struct sk_buff *skb)
 	skb->tail = skb->data - skb->head;
 }
 
+//根据偏移更新skb字段
 static inline void skb_set_tail_pointer(struct sk_buff *skb, const int offset)
 {
 	skb_reset_tail_pointer(skb);
+	//更新skb->tail
 	skb->tail += offset;
 }
 
@@ -2509,6 +2526,7 @@ static inline unsigned char *skb_tail_pointer(const struct sk_buff *skb)
 	return skb->tail;
 }
 
+//重新调整数据字段为空
 static inline void skb_reset_tail_pointer(struct sk_buff *skb)
 {
 	skb->tail = skb->data;
@@ -2589,17 +2607,21 @@ static inline void skb_put_u8(struct sk_buff *skb, u8 val)
 	*(u8 *)skb_put(skb, 1) = val;
 }
 
+//skb->data 指针向后移动 -off 个字节，插入空闲空间。
 void *skb_push(struct sk_buff *skb, unsigned int len);
 static inline void *__skb_push(struct sk_buff *skb, unsigned int len)
 {
+	//data字段下移
 	skb->data -= len;
+	//总体长度增加
 	skb->len  += len;
 	return skb->data;
 }
-
+//将 skb->data 指针向高位移动 off 个字节，移除数据
 void *skb_pull(struct sk_buff *skb, unsigned int len);
 static inline void *__skb_pull(struct sk_buff *skb, unsigned int len)
 {
+	//总体长度减
 	skb->len -= len;
 	if (unlikely(skb->len < skb->data_len)) {
 #if defined(CONFIG_DEBUG_NET)
@@ -2609,6 +2631,7 @@ static inline void *__skb_pull(struct sk_buff *skb, unsigned int len)
 #endif
 		BUG();
 	}
+	//实际数据地址增加（高位为head）、
 	return skb->data += len;
 }
 
@@ -2646,9 +2669,11 @@ void skb_condense(struct sk_buff *skb);
  *	@skb: buffer to check
  *
  *	Return the number of bytes of free space at the head of an &sk_buff.
+ *  头部大小长度
  */
 static inline unsigned int skb_headroom(const struct sk_buff *skb)
 {
+	//实际数据指针偏移减头部偏移
 	return skb->data - skb->head;
 }
 
@@ -2829,8 +2854,10 @@ static inline unsigned char *skb_network_header(const struct sk_buff *skb)
 	return skb->head + skb->network_header;
 }
 
+//重置skb的network_header为实际偏移量
 static inline void skb_reset_network_header(struct sk_buff *skb)
 {
+	//将 skb->network_header 设置为相对于 skb->head 的偏移量，表示当前网络数据包的网络层头部的起始位置
 	skb->network_header = skb->data - skb->head;
 }
 
@@ -2866,9 +2893,10 @@ static inline void skb_unset_mac_header(struct sk_buff *skb)
 {
 	skb->mac_header = (typeof(skb->mac_header))~0U;
 }
-
+//重新设置mac头部，
 static inline void skb_reset_mac_header(struct sk_buff *skb)
 {
+	//macheader偏移即为data较head的偏移，即其为data指针开始
 	skb->mac_header = skb->data - skb->head;
 }
 
@@ -4778,11 +4806,13 @@ static inline void skb_record_rx_queue(struct sk_buff *skb, u16 rx_queue)
 	skb->queue_mapping = rx_queue + 1;
 }
 
+//获取接收队列数组对应偏移
 static inline u16 skb_get_rx_queue(const struct sk_buff *skb)
 {
 	return skb->queue_mapping - 1;
 }
 
+//接收到的 skb 是否记录了其所在的硬件接收队列
 static inline bool skb_rx_queue_recorded(const struct sk_buff *skb)
 {
 	return skb->queue_mapping != 0;

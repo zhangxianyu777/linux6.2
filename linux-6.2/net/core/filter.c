@@ -4173,13 +4173,16 @@ void bpf_clear_redirect_map(struct bpf_map *map)
 DEFINE_STATIC_KEY_FALSE(bpf_master_redirect_enabled_key);
 EXPORT_SYMBOL_GPL(bpf_master_redirect_enabled_key);
 
+//根据从设备和主设备的关系，决定是否需要对 XDP 数据包进行重定向。
 u32 xdp_master_redirect(struct xdp_buff *xdp)
 {
 	struct net_device *master, *slave;
 	struct bpf_redirect_info *ri = this_cpu_ptr(&bpf_redirect_info);
-
+	//获取主设备
 	master = netdev_master_upper_dev_get_rcu(xdp->rxq->dev);
+	//获取用于发送的从设备
 	slave = master->netdev_ops->ndo_xdp_get_xmit_slave(master, xdp);
+	//检查从设备是否需要重定向
 	if (slave && slave != xdp->rxq->dev) {
 		/* The target device is different from the receiving device, so
 		 * redirect it to the new device.

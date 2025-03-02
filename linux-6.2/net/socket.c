@@ -619,17 +619,21 @@ static const struct inode_operations sockfs_inode_ops = {
  *	NULL is returned. This functions uses GFP_KERNEL internally.
  */
 
+//申请socket结构 分配inode 与socket 并绑定
 struct socket *sock_alloc(void)
 {
 	struct inode *inode;
 	struct socket *sock;
 
+	// 为 sockfs（套接字伪文件系统）分配一个新的 inode。
 	inode = new_inode_pseudo(sock_mnt->mnt_sb);
 	if (!inode)
 		return NULL;
 
+	//获取对应的 socket 结构
 	sock = SOCKET_I(inode);
 
+	//初始化 inode 数据
 	inode->i_ino = get_next_ino();
 	inode->i_mode = S_IFSOCK | S_IRWXUGO;
 	inode->i_uid = current_fsuid();
@@ -992,9 +996,11 @@ INDIRECT_CALLABLE_DECLARE(int inet_recvmsg(struct socket *, struct msghdr *,
 					   size_t, int));
 INDIRECT_CALLABLE_DECLARE(int inet6_recvmsg(struct socket *, struct msghdr *,
 					    size_t, int));
+//实际接收数据函数
 static inline int sock_recvmsg_nosec(struct socket *sock, struct msghdr *msg,
 				     int flags)
 {
+	//调用sock->ops->recvmsg函数，即为inet_stream_ops中的recvmsg即为inet_recvmsg
 	return INDIRECT_CALL_INET(sock->ops->recvmsg, inet6_recvmsg,
 				  inet_recvmsg, sock, msg, msg_data_left(msg),
 				  flags);
@@ -1009,10 +1015,13 @@ static inline int sock_recvmsg_nosec(struct socket *sock, struct msghdr *msg,
  *	Receives @msg from @sock, passing through LSM. Returns the total number
  *	of bytes received, or an error.
  */
+//安全检查及接收数据
 int sock_recvmsg(struct socket *sock, struct msghdr *msg, int flags)
 {
+
 	int err = security_socket_recvmsg(sock, msg, msg_data_left(msg), flags);
 
+	//实际接收函数
 	return err ?: sock_recvmsg_nosec(sock, msg, flags);
 }
 EXPORT_SYMBOL(sock_recvmsg);
@@ -1443,7 +1452,7 @@ EXPORT_SYMBOL(sock_wake_async);
  *	be set to true if the socket resides in kernel space.
  *	This function internally uses GFP_KERNEL.
  */
-
+//创建socket核心函数，分配socket对象，获取对应协议族的创建函数，完成套接字初始化。
 int __sock_create(struct net *net, int family, int type, int protocol,
 			 struct socket **res, int kern)
 {
@@ -1454,8 +1463,10 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	/*
 	 *      Check protocol is in range
 	 */
+	//检查协议族类型
 	if (family < 0 || family >= NPROTO)
 		return -EAFNOSUPPORT;
+	//检查套接字类型
 	if (type < 0 || type >= SOCK_MAX)
 		return -EINVAL;
 
@@ -1464,12 +1475,14 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	   This uglymoron is moved from INET layer to here to avoid
 	   deadlock in module load.
 	 */
+	//PF_INET, SOCK_PACKET 组合，将其替换为 PF_PACKET 协议族
 	if (family == PF_INET && type == SOCK_PACKET) {
 		pr_info_once("%s uses obsolete (PF_INET,SOCK_PACKET)\n",
 			     current->comm);
 		family = PF_PACKET;
 	}
 
+	//安全检查
 	err = security_socket_create(family, type, protocol, kern);
 	if (err)
 		return err;
@@ -1479,6 +1492,7 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	 *	the protocol is 0, the family is instructed to select an appropriate
 	 *	default.
 	 */
+	//分配内存
 	sock = sock_alloc();
 	if (!sock) {
 		net_warn_ratelimited("socket: no more sockets\n");
@@ -1486,8 +1500,10 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 				   closest posix thing */
 	}
 
+	//将参数type赋给结构
 	sock->type = type;
 
+	//如果协议族的处理函数未注册，尝试加载相应的内核模块
 #ifdef CONFIG_MODULES
 	/* Attempt to load a protocol module if the find failed.
 	 *
@@ -1500,6 +1516,7 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 #endif
 
 	rcu_read_lock();
+	//查找协议族处理函数
 	pf = rcu_dereference(net_families[family]);
 	err = -EAFNOSUPPORT;
 	if (!pf)
@@ -1515,6 +1532,7 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	/* Now protected by module ref count */
 	rcu_read_unlock();
 
+	//调用协议族的创建函数
 	err = pf->create(net, sock, protocol, kern);
 	if (err < 0)
 		goto out_module_put;
@@ -1523,6 +1541,7 @@ int __sock_create(struct net *net, int family, int type, int protocol,
 	 * Now to bump the refcnt of the [loadable] module that owns this
 	 * socket at sock_release time we decrement its refcnt.
 	 */
+	//绑定套接字操作函数
 	if (!try_module_get(sock->ops->owner))
 		goto out_module_busy;
 
@@ -1564,6 +1583,7 @@ EXPORT_SYMBOL(__sock_create);
  *	Returns 0 or an error. This function internally uses GFP_KERNEL.
  */
 
+//调用内部函数
 int sock_create(int family, int type, int protocol, struct socket **res)
 {
 	return __sock_create(current->nsproxy->net_ns, family, type, protocol, res, 0);
@@ -1588,21 +1608,28 @@ int sock_create_kern(struct net *net, int family, int type, int protocol, struct
 }
 EXPORT_SYMBOL(sock_create_kern);
 
+//进行检查之后创建套接字
 static struct socket *__sys_socket_create(int family, int type, int protocol)
 {
 	struct socket *sock;
 	int retval;
 
+	//检查相关宏的一致性
 	/* Check the SOCK_* constants for consistency.  */
 	BUILD_BUG_ON(SOCK_CLOEXEC != O_CLOEXEC);
 	BUILD_BUG_ON((SOCK_MAX | SOCK_TYPE_MASK) != SOCK_TYPE_MASK);
 	BUILD_BUG_ON(SOCK_CLOEXEC & SOCK_TYPE_MASK);
 	BUILD_BUG_ON(SOCK_NONBLOCK & SOCK_TYPE_MASK);
 
+	//验证非法标志位 只允许 SOCK_CLOEXEC 和 SOCK_NONBLOCK
+	//type & ~SOCK_TYPE_MASK 用以提取标志位
+	//& ~(SOCK_CLOEXEC | SOCK_NONBLOCK) 用以屏蔽掉这两个合法标志
 	if ((type & ~SOCK_TYPE_MASK) & ~(SOCK_CLOEXEC | SOCK_NONBLOCK))
 		return ERR_PTR(-EINVAL);
+	//获取实际类型（去除标志位）
 	type &= SOCK_TYPE_MASK;
 
+	//实际内部分配与初始化 
 	retval = sock_create(family, type, protocol, &sock);
 	if (retval < 0)
 		return ERR_PTR(retval);
@@ -1631,19 +1658,24 @@ struct file *__sys_socket_file(int family, int type, int protocol)
 	return file;
 }
 
+//socket系统调用内部函数，创建新的套接字
 int __sys_socket(int family, int type, int protocol)
 {
 	struct socket *sock;
 	int flags;
 
+	//创建套接字
 	sock = __sys_socket_create(family, type, protocol);
 	if (IS_ERR(sock))
 		return PTR_ERR(sock);
 
+	//保留标志位
 	flags = type & ~SOCK_TYPE_MASK;
+	//设置标志位 如果 SOCK_NONBLOCK 的定义与 O_NONBLOCK 不一致，调整标志为 O_NONBLOCK
 	if (SOCK_NONBLOCK != O_NONBLOCK && (flags & SOCK_NONBLOCK))
 		flags = (flags & ~SOCK_NONBLOCK) | O_NONBLOCK;
 
+	//创建的套接字对象映射到一个文件描述符
 	return sock_map_fd(sock, flags & (O_CLOEXEC | O_NONBLOCK));
 }
 
@@ -2147,6 +2179,7 @@ SYSCALL_DEFINE4(send, int, fd, void __user *, buff, size_t, len,
  *	sender. We verify the buffers are writable and if needed move the
  *	sender address from kernel to user space.
  */
+//接收数据
 int __sys_recvfrom(int fd, void __user *ubuf, size_t size, unsigned int flags,
 		   struct sockaddr __user *addr, int __user *addr_len)
 {
@@ -2163,12 +2196,15 @@ int __sys_recvfrom(int fd, void __user *ubuf, size_t size, unsigned int flags,
 	err = import_single_range(ITER_DEST, ubuf, size, &iov, &msg.msg_iter);
 	if (unlikely(err))
 		return err;
+	//根据fd找到对应的socket结构
 	sock = sockfd_lookup_light(fd, &err, &fput_needed);
 	if (!sock)
 		goto out;
 
+	//为O_NONBLOCK类型
 	if (sock->file->f_flags & O_NONBLOCK)
 		flags |= MSG_DONTWAIT;
+	//从socket中接收数据
 	err = sock_recvmsg(sock, &msg, flags);
 
 	if (err >= 0 && addr != NULL) {
@@ -2183,6 +2219,7 @@ out:
 	return err;
 }
 
+//recv底层系统调用实现
 SYSCALL_DEFINE6(recvfrom, int, fd, void __user *, ubuf, size_t, size,
 		unsigned int, flags, struct sockaddr __user *, addr,
 		int __user *, addr_len)
@@ -3098,20 +3135,24 @@ SYSCALL_DEFINE2(socketcall, int, call, unsigned long __user *, args)
  *	socket interface. The value ops->family corresponds to the
  *	socket system call protocol family.
  */
+//套接字注册 用于向内核注册套接字协议族的函数。它允许一个协议族的实现将其协议处理程序链接到内核的套接字接口
 int sock_register(const struct net_proto_family *ops)
 {
 	int err;
 
+	//超出协议族范围
 	if (ops->family >= NPROTO) {
 		pr_crit("protocol %d >= NPROTO(%d)\n", ops->family, NPROTO);
 		return -ENOBUFS;
 	}
 
 	spin_lock(&net_family_lock);
+	//检查协议族是否已注册
 	if (rcu_dereference_protected(net_families[ops->family],
 				      lockdep_is_held(&net_family_lock)))
 		err = -EEXIST;
 	else {
+		//将协议族信息 ops 注册到 net_families 数组中对应的位置 net_families 是一个指针数组，每个元素表示一个协议族
 		rcu_assign_pointer(net_families[ops->family], ops);
 		err = 0;
 	}

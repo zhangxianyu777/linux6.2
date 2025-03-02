@@ -451,6 +451,7 @@ INDIRECT_CALLABLE_DECLARE(int ip_local_deliver(struct sk_buff *));
 /* Input packet from network to transport.  */
 static inline int dst_input(struct sk_buff *skb)
 {
+	//根据数据包的目标地址类型（IPv4 或 IPv6）来选择合适的处理函数
 	return INDIRECT_CALL_INET(skb_dst(skb)->input,
 				  ip6_input, ip_local_deliver, skb);
 }

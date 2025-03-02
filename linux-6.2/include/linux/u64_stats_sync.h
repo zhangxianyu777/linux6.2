@@ -139,9 +139,10 @@ static inline void u64_stats_init(struct u64_stats_sync *syncp)
 {
 	seqcount_init(&syncp->seq);
 }
-
+//更新 u64_stats_sync 结构中数据的函数
 static inline void __u64_stats_update_begin(struct u64_stats_sync *syncp)
 {
+	//禁用内核抢占
 	preempt_disable_nested();
 	write_seqcount_begin(&syncp->seq);
 }
@@ -151,7 +152,7 @@ static inline void __u64_stats_update_end(struct u64_stats_sync *syncp)
 	write_seqcount_end(&syncp->seq);
 	preempt_enable_nested();
 }
-
+//保存中断状态
 static inline unsigned long __u64_stats_irqsave(void)
 {
 	unsigned long flags;
@@ -189,8 +190,9 @@ static inline void u64_stats_update_end(struct u64_stats_sync *syncp)
 
 static inline unsigned long u64_stats_update_begin_irqsave(struct u64_stats_sync *syncp)
 {
+	//保存中断状态
 	unsigned long flags = __u64_stats_irqsave();
-
+	//
 	__u64_stats_update_begin(syncp);
 	return flags;
 }

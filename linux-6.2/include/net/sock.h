@@ -991,9 +991,12 @@ static inline bool sock_flag(const struct sock *sk, enum sock_flags flag)
 }
 
 #ifdef CONFIG_NET
+//声明一个静态的布尔型键 —— memalloc_socks_key，并将其初始化为 false 
+//代表着当前系统内有权使用reserved内存区的socket连接数（sock中SOCK_MEMALLOC被置位），在sk_set_memalloc与sk_clear_memalloc被更改
 DECLARE_STATIC_KEY_FALSE(memalloc_socks_key);
 static inline int sk_memalloc_socks(void)
 {
+	//返回 memalloc_socks_key 的当前状态 
 	return static_branch_unlikely(&memalloc_socks_key);
 }
 
@@ -2077,6 +2080,7 @@ static inline void sk_set_socket(struct sock *sk, struct socket *sock)
 	sk->sk_socket = sock;
 }
 
+//获取sock的等待队列
 static inline wait_queue_head_t *sk_sleep(struct sock *sk)
 {
 	BUILD_BUG_ON(offsetof(struct socket_wq, wait) != 0);

@@ -241,6 +241,7 @@ void __wake_up_pollfree(struct wait_queue_head *wq_head);
 	__wake_up_locked_key((x), TASK_NORMAL, poll_to_key(m))
 #define wake_up_interruptible_poll(x, m)					\
 	__wake_up(x, TASK_INTERRUPTIBLE, 1, poll_to_key(m))
+//唤醒阻塞进程
 #define wake_up_interruptible_sync_poll(x, m)					\
 	__wake_up_sync_key((x), TASK_INTERRUPTIBLE, poll_to_key(m))
 #define wake_up_interruptible_sync_poll_locked(x, m)				\
@@ -1198,6 +1199,7 @@ long wait_woken(struct wait_queue_entry *wq_entry, unsigned mode, long timeout);
 int woken_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, int sync, void *key);
 int autoremove_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, int sync, void *key);
 
+//定义等待队列、注册回调函数、关联进程描述符
 #define DEFINE_WAIT_FUNC(name, function)					\
 	struct wait_queue_entry name = {					\
 		.private	= current,					\

@@ -4935,14 +4935,19 @@ static int __must_check tcp_queue_rcv(struct sock *sk, struct sk_buff *skb,
 				      bool *fragstolen)
 {
 	int eaten;
+	//获取接收队列尾部
 	struct sk_buff *tail = skb_peek_tail(&sk->sk_receive_queue);
 
+	//如果接收队列中有尾部元素（即 tail 不为空），调用 tcp_try_coalesce 函数尝试将当前的数据包（skb）与尾部的数据包合并
 	eaten = (tail &&
 		 tcp_try_coalesce(sk, tail,
 				  skb, fragstolen)) ? 1 : 0;
+	//更新接收序列号
 	tcp_rcv_nxt_update(tcp_sk(sk), TCP_SKB_CB(skb)->end_seq);
 	if (!eaten) {
+		//数据包未被合并时的处理
 		__skb_queue_tail(&sk->sk_receive_queue, skb);
+		//设置数据包的所有者为 sk
 		skb_set_owner_r(skb, sk);
 	}
 	return eaten;
@@ -5842,6 +5847,7 @@ reset:
  *	the rest is checked inline. Fast processing is turned on in
  *	tcp_data_queue when everything is OK.
  */
+//ESTABLISHED状态的接收函数
 void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 {
 	enum skb_drop_reason reason = SKB_DROP_REASON_NOT_SPECIFIED;
@@ -5850,10 +5856,13 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 	unsigned int len = skb->len;
 
 	/* TCP congestion window tracking */
+	//用于监控和调试
 	trace_tcp_probe(sk, skb);
 
+	//刷新时间戳，用于 TCP 延迟和 RTT 测量
 	tcp_mstamp_refresh(tp);
 	if (unlikely(!rcu_access_pointer(sk->sk_rx_dst)))
+		//调用 sk_rx_dst_set 设置接收目的地
 		inet_csk(sk)->icsk_af_ops->sk_rx_dst_set(sk, skb);
 	/*
 	 *	Header prediction.
@@ -5869,7 +5878,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 	 *	extra cost of the net_bh soft interrupt processing...
 	 *	We do checksum and copy also but from device to kernel.
 	 */
-
+	//清除时间戳标记，初始化 rx_opt 结构中的 saw_tstamp 字段
 	tp->rx_opt.saw_tstamp = 0;
 
 	/*	pred_flags is 0xS?10 << 16 + snd_wnd
@@ -5880,7 +5889,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 	 *	 space for instance)
 	 *	PSH flag is ignored.
 	 */
-
+	// TCP 头部的标志位与预测的标志位 (pred_flags) 匹配，并且序列号 (seq) 和确认号 (ack_seq) 符合预期，则进入快速路径
 	if ((tcp_flag_word(th) & TCP_HP_BITS) == tp->pred_flags &&
 	    TCP_SKB_CB(skb)->seq == tp->rcv_nxt &&
 	    !after(TCP_SKB_CB(skb)->ack_seq, tp->snd_nxt)) {
@@ -5892,6 +5901,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 		 */
 
 		/* Check timestamp */
+		//时间戳检查
 		if (tcp_header_len == sizeof(struct tcphdr) + TCPOLEN_TSTAMP_ALIGNED) {
 			/* No? Slow path! */
 			if (!tcp_parse_aligned_timestamp(tp, th))
@@ -5907,14 +5917,16 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 			 * future packets due to the PAWS test.
 			 */
 		}
-
+		//数据包的长度小于等于 TCP 头部长度，说明是纯 ACK 包，直接处理。
 		if (len <= tcp_header_len) {
 			/* Bulk data transfer: sender */
+			//数据包的长度与头部长度一致，直接 ACK
 			if (len == tcp_header_len) {
 				/* Predicted packet is in window by definition.
 				 * seq == rcv_nxt and rcv_wup <= rcv_nxt.
 				 * Hence, check seq<=rcv_wup reduces to:
 				 */
+				
 				if (tcp_header_len ==
 				    (sizeof(struct tcphdr) + TCPOLEN_TSTAMP_ALIGNED) &&
 				    tp->rcv_nxt == tp->rcv_wup)
@@ -5941,9 +5953,11 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 			int eaten = 0;
 			bool fragstolen = false;
 
+			//校验数据包的校验和
 			if (tcp_checksum_complete(skb))
 				goto csum_error;
 
+			//大小是否超过了 sk_forward_alloc
 			if ((int)skb->truesize > sk->sk_forward_alloc)
 				goto step5;
 
@@ -5951,6 +5965,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 			 * seq == rcv_nxt and rcv_wup <= rcv_nxt.
 			 * Hence, check seq<=rcv_wup reduces to:
 			 */
+			//处理时间戳、RTT 测量
 			if (tcp_header_len ==
 			    (sizeof(struct tcphdr) + TCPOLEN_TSTAMP_ALIGNED) &&
 			    tp->rcv_nxt == tp->rcv_wup)
@@ -5963,10 +5978,12 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 			/* Bulk data transfer: receiver */
 			skb_dst_drop(skb);
 			__skb_pull(skb, tcp_header_len);
+			//接收数据并处理接收到的数据，将数据包放入接收队列，并触发数据接收事件
 			eaten = tcp_queue_rcv(sk, skb, &fragstolen);
 
 			tcp_event_data_recv(sk, skb);
 
+			//根据数据包的确认号，决定是否发送 ACK，是否需要更新滑动窗口
 			if (TCP_SKB_CB(skb)->ack_seq != tp->snd_una) {
 				/* Well, only one small jumplet in fast path... */
 				tcp_ack(sk, skb, FLAG_DATA);
@@ -5987,9 +6004,11 @@ no_ack:
 	}
 
 slow_path:
+	//数据包小于头部长度或校验和不正确
 	if (len < (th->doff << 2) || tcp_checksum_complete(skb))
 		goto csum_error;
 
+	//无效的 TCP 标志位
 	if (!th->ack && !th->rst && !th->syn) {
 		reason = SKB_DROP_REASON_TCP_FLAGS;
 		goto discard;
@@ -5998,11 +6017,12 @@ slow_path:
 	/*
 	 *	Standard slow path.
 	 */
-
+	//检查数据包的合法性
 	if (!tcp_validate_incoming(sk, skb, th, 1))
 		return;
 
 step5:
+	//发送 ACK 包，并更新时间戳
 	reason = tcp_ack(sk, skb, FLAG_SLOWPATH | FLAG_UPDATE_TS_RECENT);
 	if ((int)reason < 0) {
 		reason = -reason;
@@ -6011,9 +6031,11 @@ step5:
 	tcp_rcv_rtt_measure_ts(sk, skb);
 
 	/* Process urgent data. */
+	//处理紧急数据
 	tcp_urg(sk, skb, th);
 
 	/* step 7: process the segment text */
+	//数据处理和队列
 	tcp_data_queue(sk, skb);
 
 	tcp_data_snd_check(sk);
