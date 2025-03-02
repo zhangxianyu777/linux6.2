@@ -140,6 +140,7 @@ err:
  * hence saving memory and avoiding code duplication for the file/inode/dentry
  * setup.  Returns the newly created file* or an error pointer.
  */
+//通过将新文件实例连接到一个匿名元节点和一个描述文件“类”的字段，创建一个新文件实实例
 struct file *anon_inode_getfile(const char *name,
 				const struct file_operations *fops,
 				void *priv, int flags)

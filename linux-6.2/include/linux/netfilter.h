@@ -213,6 +213,7 @@ static inline int nf_hook(u_int8_t pf, unsigned int hook, struct net *net,
 			  struct net_device *indev, struct net_device *outdev,
 			  int (*okfn)(struct net *, struct sock *, struct sk_buff *))
 {
+	// 存储钩子链表的头指针
 	struct nf_hook_entries *hook_head = NULL;
 	int ret = 1;
 
@@ -224,8 +225,10 @@ static inline int nf_hook(u_int8_t pf, unsigned int hook, struct net *net,
 #endif
 
 	rcu_read_lock();
+	// 根据协议族选择钩子链表
 	switch (pf) {
 	case NFPROTO_IPV4:
+		// 获取与当前网络命名空间相关的 IPv4 钩子链表
 		hook_head = rcu_dereference(net->nf.hooks_ipv4[hook]);
 		break;
 	case NFPROTO_IPV6:
@@ -247,17 +250,18 @@ static inline int nf_hook(u_int8_t pf, unsigned int hook, struct net *net,
 		WARN_ON_ONCE(1);
 		break;
 	}
-
+	// 执行钩子处理
 	if (hook_head) {
 		struct nf_hook_state state;
-
+		// 初始化钩子状态
 		nf_hook_state_init(&state, hook, pf, indev, outdev,
 				   sk, net, okfn);
-
+		// 调用钩子处理函数
 		ret = nf_hook_slow(skb, &state, hook_head, 0);
 	}
 	rcu_read_unlock();
 
+	// 返回处理结果
 	return ret;
 }
 
@@ -297,6 +301,7 @@ NF_HOOK(uint8_t pf, unsigned int hook, struct net *net, struct sock *sk, struct 
 	struct net_device *in, struct net_device *out,
 	int (*okfn)(struct net *, struct sock *, struct sk_buff *))
 {
+	//实际调用
 	int ret = nf_hook(pf, hook, net, sk, skb, in, out, okfn);
 	if (ret == 1)
 		ret = okfn(net, sk, skb);

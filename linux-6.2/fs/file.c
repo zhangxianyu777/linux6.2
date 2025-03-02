@@ -479,25 +479,35 @@ struct files_struct init_files = {
 	.resize_wait	= __WAIT_QUEUE_HEAD_INITIALIZER(init_files.resize_wait),
 };
 
+//查找下一可用的描述符
 static unsigned int find_next_fd(struct fdtable *fdt, unsigned int start)
 {
+	//最大的fd个数
 	unsigned int maxfd = fdt->max_fds;
+	//最大个数
 	unsigned int maxbit = maxfd / BITS_PER_LONG;
+	//当前位置
 	unsigned int bitbit = start / BITS_PER_LONG;
 
+	//查找 fdt->full_fds_bits 位图中下一个为零的位，表示该文件描述符是可用的。
+	//它从 bitbit 开始查找，并返回第一个可用的文件描述符。然后将其乘以 BITS_PER_LONG 转换回实际的文件描述符值
 	bitbit = find_next_zero_bit(fdt->full_fds_bits, maxbit, bitbit) * BITS_PER_LONG;
 	if (bitbit > maxfd)
 		return maxfd;
+	//更新 start，为下一次查找提供新的起始位置
 	if (bitbit > start)
 		start = bitbit;
+	//查找 fdt->open_fds 位图中的下一个空闲文件描述符
 	return find_next_zero_bit(fdt->open_fds, maxfd, start);
 }
 
 /*
  * allocate a file descriptor, mark it busy.
  */
+//申请新的fd
 static int alloc_fd(unsigned start, unsigned end, unsigned flags)
 {
+	//当前进程的files结构
 	struct files_struct *files = current->files;
 	unsigned int fd;
 	int error;
@@ -505,11 +515,15 @@ static int alloc_fd(unsigned start, unsigned end, unsigned flags)
 
 	spin_lock(&files->file_lock);
 repeat:
+	//取得fdt结构 
 	fdt = files_fdtable(files);
+	//起始查找位置
 	fd = start;
+	//从files->next_fd开始 next_fd表示可能可用的下一个文件描述符
 	if (fd < files->next_fd)
 		fd = files->next_fd;
 
+	//小于最大描述符时进行进一步查找
 	if (fd < fdt->max_fds)
 		fd = find_next_fd(fdt, fd);
 
@@ -520,7 +534,8 @@ repeat:
 	error = -EMFILE;
 	if (fd >= end)
 		goto out;
-
+		
+	//根据所给的fd值，判断是否需要对进程的打开文件表进行扩容
 	error = expand_files(files, fd);
 	if (error < 0)
 		goto out;
@@ -554,11 +569,13 @@ out:
 	return error;
 }
 
+//获取未用的fd
 int __get_unused_fd_flags(unsigned flags, unsigned long nofile)
 {
 	return alloc_fd(0, nofile, flags);
 }
 
+//获取未用的fd
 int get_unused_fd_flags(unsigned flags)
 {
 	return __get_unused_fd_flags(flags, rlimit(RLIMIT_NOFILE));

@@ -14,6 +14,7 @@ void __init_waitqueue_head(struct wait_queue_head *wq_head, const char *name, st
 
 EXPORT_SYMBOL(__init_waitqueue_head);
 
+//将等待队列插入sock对象的等待队列
 void add_wait_queue(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry)
 {
 	unsigned long flags;
@@ -77,6 +78,7 @@ EXPORT_SYMBOL(remove_wait_queue);
  * started to run but is not in state TASK_RUNNING. try_to_wake_up() returns
  * zero in this (rare) case, and we handle it by continuing to scan the queue.
  */
+//唤醒进程
 static int __wake_up_common(struct wait_queue_head *wq_head, unsigned int mode,
 			int nr_exclusive, int wake_flags, void *key,
 			wait_queue_entry_t *bookmark)
@@ -97,13 +99,14 @@ static int __wake_up_common(struct wait_queue_head *wq_head, unsigned int mode,
 	if (&curr->entry == &wq_head->head)
 		return nr_exclusive;
 
+	//遍历等待队列
 	list_for_each_entry_safe_from(curr, next, &wq_head->head, entry) {
 		unsigned flags = curr->flags;
 		int ret;
 
 		if (flags & WQ_FLAG_BOOKMARK)
 			continue;
-
+		//调用对应回调函数
 		ret = curr->func(curr, mode, wake_flags, key);
 		if (ret < 0)
 			break;
@@ -121,6 +124,7 @@ static int __wake_up_common(struct wait_queue_head *wq_head, unsigned int mode,
 	return nr_exclusive;
 }
 
+//唤醒实现
 static int __wake_up_common_lock(struct wait_queue_head *wq_head, unsigned int mode,
 			int nr_exclusive, int wake_flags, void *key)
 {
@@ -135,6 +139,7 @@ static int __wake_up_common_lock(struct wait_queue_head *wq_head, unsigned int m
 
 	do {
 		spin_lock_irqsave(&wq_head->lock, flags);
+		//唤醒
 		remaining = __wake_up_common(wq_head, mode, remaining,
 						wake_flags, key, &bookmark);
 		spin_unlock_irqrestore(&wq_head->lock, flags);
@@ -475,6 +480,7 @@ long wait_woken(struct wait_queue_entry *wq_entry, unsigned mode, long timeout)
 }
 EXPORT_SYMBOL(wait_woken);
 
+//唤醒进程后的回调函数
 int woken_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, int sync, void *key)
 {
 	/* Pairs with the smp_store_mb() in wait_woken(). */

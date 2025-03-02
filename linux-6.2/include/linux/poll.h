@@ -43,6 +43,7 @@ typedef struct poll_table_struct {
 	__poll_t _key;
 } poll_table;
 
+//加入等待队列 调用p->_qproc 即ep_ptable_queue_proc
 static inline void poll_wait(struct file * filp, wait_queue_head_t * wait_address, poll_table *p)
 {
 	if (p && p->_qproc && wait_address)

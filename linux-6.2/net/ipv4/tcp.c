@@ -493,6 +493,7 @@ static bool tcp_stream_is_readable(struct sock *sk, int target)
  *	take care of normal races (between the test and the event) and we don't
  *	go look at any of the socket buffers directly.
  */
+//tcp的poll函数
 __poll_t tcp_poll(struct file *file, struct socket *sock, poll_table *wait)
 {
 	__poll_t mask;
@@ -2420,7 +2421,7 @@ static int tcp_inq_hint(struct sock *sk)
  *	tricks with *seq access order and skb->users are not required.
  *	Probably, code can be easily improved even more.
  */
-
+//tcp接收数据
 static int tcp_recvmsg_locked(struct sock *sk, struct msghdr *msg, size_t len,
 			      int flags, struct scm_timestamping_internal *tss,
 			      int *cmsg_flags)
@@ -2437,19 +2438,24 @@ static int tcp_recvmsg_locked(struct sock *sk, struct msghdr *msg, size_t len,
 	u32 urg_hole = 0;
 
 	err = -ENOTCONN;
+	//套接字的状态为 TCP_LISTEN（监听状态），没有建立连接
 	if (sk->sk_state == TCP_LISTEN)
 		goto out;
 
+	//接收到的是待处理的接收队列消息
 	if (tp->recvmsg_inq) {
 		*cmsg_flags = TCP_CMSG_INQ;
 		msg->msg_get_inq = 1;
 	}
+	//设置接收超时，控制阻塞的最大时间
 	timeo = sock_rcvtimeo(sk, flags & MSG_DONTWAIT);
 
 	/* Urgent data needs to be handled specially. */
+	//MSG_OOB 标志被设置，表示接收紧急数据
 	if (flags & MSG_OOB)
 		goto recv_urg;
 
+	//套接字处于修复模式
 	if (unlikely(tp->repair)) {
 		err = -EPERM;
 		if (!(flags & MSG_PEEK))
@@ -2464,7 +2470,7 @@ static int tcp_recvmsg_locked(struct sock *sk, struct msghdr *msg, size_t len,
 
 		/* 'common' recv queue MSG_PEEK-ing */
 	}
-
+	//如果 MSG_PEEK 标志被设置，表示用户想要预览数据（不从队列中移除数据）。此时记录当前的 copied_seq
 	seq = &tp->copied_seq;
 	if (flags & MSG_PEEK) {
 		peek_seq = tp->copied_seq;
@@ -2473,6 +2479,7 @@ static int tcp_recvmsg_locked(struct sock *sk, struct msghdr *msg, size_t len,
 
 	target = sock_rcvlowat(sk, flags & MSG_WAITALL, len);
 
+	//循环读取数据
 	do {
 		u32 offset;
 
@@ -2489,24 +2496,30 @@ static int tcp_recvmsg_locked(struct sock *sk, struct msghdr *msg, size_t len,
 		/* Next get a buffer. */
 
 		last = skb_peek_tail(&sk->sk_receive_queue);
+		//遍历接收队列（sk->sk_receive_queue）中的每个数据包
 		skb_queue_walk(&sk->sk_receive_queue, skb) {
 			last = skb;
 			/* Now that we have two receive queues this
 			 * shouldn't happen.
 			 */
+			//根据数据包的序列号与期望的 seq 比较 当前期望的序列号 *seq 是否小于当前数据包的序列号
 			if (WARN(before(*seq, TCP_SKB_CB(skb)->seq),
 				 "TCP recvmsg seq # bug: copied %X, seq %X, rcvnxt %X, fl %X\n",
 				 *seq, TCP_SKB_CB(skb)->seq, tp->rcv_nxt,
 				 flags))
 				break;
 
+			//计算数据偏移量
 			offset = *seq - TCP_SKB_CB(skb)->seq;
+			//检查当前数据包是否是一个 SYN 数据包
 			if (unlikely(TCP_SKB_CB(skb)->tcp_flags & TCPHDR_SYN)) {
 				pr_err_once("%s: found a SYN, please report !\n", __func__);
 				offset--;
 			}
+			//偏移量小于数据包的长
 			if (offset < skb->len)
 				goto found_ok_skb;
+			//TCP 标志位包含 FIN
 			if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_FIN)
 				goto found_fin_ok;
 			WARN(!(flags & MSG_PEEK),
@@ -2516,9 +2529,10 @@ static int tcp_recvmsg_locked(struct sock *sk, struct msghdr *msg, size_t len,
 
 		/* Well, if we have backlog, try to process it now yet. */
 
+		//检查是否已经读取了足够的数据 
 		if (copied >= target && !READ_ONCE(sk->sk_backlog.tail))
 			break;
-
+		//检查是否可以继续读取
 		if (copied) {
 			if (!timeo ||
 			    sk->sk_err ||
@@ -2527,6 +2541,7 @@ static int tcp_recvmsg_locked(struct sock *sk, struct msghdr *msg, size_t len,
 			    signal_pending(current))
 				break;
 		} else {
+			//检查各种错误和状态
 			if (sock_flag(sk, SOCK_DONE))
 				break;
 
@@ -2556,15 +2571,18 @@ static int tcp_recvmsg_locked(struct sock *sk, struct msghdr *msg, size_t len,
 				break;
 			}
 		}
-
+		//处理积压的数据
 		if (copied >= target) {
 			/* Do not sleep, just process backlog. */
+			//处理积压的数据包
 			__sk_flush_backlog(sk);
 		} else {
+			// 清理已经读取的数据
 			tcp_cleanup_rbuf(sk, copied);
+			//使套接字进入等待状态，直到有更多数据可供读取。
 			sk_wait_data(sk, &timeo, last);
 		}
-
+		//查看数据但不从接收队列中移除它
 		if ((flags & MSG_PEEK) &&
 		    (peek_seq - copied - urg_hole != tp->copied_seq)) {
 			net_dbg_ratelimited("TCP(%s:%d): Application bug, race in MSG_PEEK\n",
@@ -2576,11 +2594,13 @@ static int tcp_recvmsg_locked(struct sock *sk, struct msghdr *msg, size_t len,
 
 found_ok_skb:
 		/* Ok so how much can we use? */
+		//读取的数据量 
 		used = skb->len - offset;
 		if (len < used)
 			used = len;
 
 		/* Do we have urgent data here? */
+		//处理紧急数据
 		if (unlikely(tp->urg_data)) {
 			u32 urg_offset = tp->urg_seq - *seq;
 			if (urg_offset < used) {
@@ -2597,8 +2617,9 @@ found_ok_skb:
 					used = urg_offset;
 			}
 		}
-
+		//数据复制
 		if (!(flags & MSG_TRUNC)) {
+			//复制到缓冲区
 			err = skb_copy_datagram_msg(skb, offset, msg, used);
 			if (err) {
 				/* Exception. Bailout! */
@@ -2609,9 +2630,11 @@ found_ok_skb:
 		}
 
 		WRITE_ONCE(*seq, *seq + used);
+		//增加已复制的数据量
 		copied += used;
+		//减少剩余读取字节数
 		len -= used;
-
+		//调整接收缓冲区空间
 		tcp_rcv_space_adjust(sk);
 
 skip_copy:
@@ -2662,6 +2685,7 @@ recv_sndq:
 	goto out;
 }
 
+//tcp接收数据方法
 int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int flags,
 		int *addr_len)
 {
@@ -2671,12 +2695,14 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int flags,
 	if (unlikely(flags & MSG_ERRQUEUE))
 		return inet_recv_error(sk, msg, len, addr_len);
 
+	//可以进入忙等待，并且接收队列为空且连接已建立
 	if (sk_can_busy_loop(sk) &&
 	    skb_queue_empty_lockless(&sk->sk_receive_queue) &&
 	    sk->sk_state == TCP_ESTABLISHED)
 		sk_busy_loop(sk, flags & MSG_DONTWAIT);
 
 	lock_sock(sk);
+	//接收数据
 	ret = tcp_recvmsg_locked(sk, msg, len, flags, &tss, &cmsg_flags);
 	release_sock(sk);
 

@@ -25,6 +25,7 @@
 #define NR_OPEN_MAX ~0U
 
 struct fdtable {
+	//最大文件描述符数量
 	unsigned int max_fds;
 	struct file __rcu **fd;      /* current fd array */
 	unsigned long *close_on_exec;
@@ -46,20 +47,25 @@ static inline bool fd_is_open(unsigned int fd, const struct fdtable *fdt)
 /*
  * Open file table structure
  */
+//files结构 存储打开的文件
 struct files_struct {
   /*
    * read mostly part
    */
+  	//记录对该结构体的引用计数，多线程会共享files_struct 结构体
 	atomic_t count;
 	bool resize_in_progress;
 	wait_queue_head_t resize_wait;
 
+	//当前文件描述符表的指针
 	struct fdtable __rcu *fdt;
+	//文件描述符表的副本，用于读取操作
 	struct fdtable fdtab;
   /*
    * written part on a separate cache line in SMP
    */
 	spinlock_t file_lock ____cacheline_aligned_in_smp;
+	//表示可能可用的下一个文件描述符 用以标志查找开始的位置
 	unsigned int next_fd;
 	unsigned long close_on_exec_init[1];
 	unsigned long open_fds_init[1];
@@ -74,6 +80,7 @@ struct dentry;
 #define rcu_dereference_check_fdtable(files, fdtfd) \
 	rcu_dereference_check((fdtfd), lockdep_is_held(&(files)->file_lock))
 
+//获得files结构中的fdt
 #define files_fdtable(files) \
 	rcu_dereference_check_fdtable((files), (files)->fdt)
 

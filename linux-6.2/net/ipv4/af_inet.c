@@ -241,7 +241,7 @@ EXPORT_SYMBOL(inet_listen);
 /*
  *	Create an inet socket.
  */
-
+//inet协议类型的套接字创建函数
 static int inet_create(struct net *net, struct socket *sock, int protocol,
 		       int kern)
 {
@@ -256,31 +256,36 @@ static int inet_create(struct net *net, struct socket *sock, int protocol,
 	if (protocol < 0 || protocol >= IPPROTO_MAX)
 		return -EINVAL;
 
+	//初始化套接字状态为未连接
 	sock->state = SS_UNCONNECTED;
 
 	/* Look for the requested type/protocol pair. */
 lookup_protocol:
 	err = -ESOCKTNOSUPPORT;
 	rcu_read_lock();
+	//查找协议族的支持/根据sock->type进行进一步检查，是否为此类型的创建函数
 	list_for_each_entry_rcu(answer, &inetsw[sock->type], list) {
 
 		err = 0;
 		/* Check the non-wild match. */
+		//协议相匹配
 		if (protocol == answer->protocol) {
 			if (protocol != IPPROTO_IP)
 				break;
 		} else {
 			/* Check for the two wild cases. */
+			//处理通配协议（IPPROTO_IP） 即protocol为0时
 			if (IPPROTO_IP == protocol) {
 				protocol = answer->protocol;
 				break;
 			}
+			//遍历到IPPROTO_IP协议时，即SOCK_RAW
 			if (IPPROTO_IP == answer->protocol)
 				break;
 		}
 		err = -EPROTONOSUPPORT;
 	}
-
+	//如果找不到对应的协议，尝试加载模块
 	if (unlikely(err)) {
 		if (try_loading_module < 2) {
 			rcu_read_unlock();
@@ -304,11 +309,14 @@ lookup_protocol:
 	}
 
 	err = -EPERM;
+	//对于原始套接字（SOCK_RAW），需要检查用户是否具有 CAP_NET_RAW 权限
 	if (sock->type == SOCK_RAW && !kern &&
 	    !ns_capable(net->user_ns, CAP_NET_RAW))
 		goto out_rcu_unlock;
 
+	//将inet_stream_ops赋值给sock->ops
 	sock->ops = answer->ops;
+	//获取tcp_prot
 	answer_prot = answer->prot;
 	answer_flags = answer->flags;
 	rcu_read_unlock();
@@ -316,6 +324,7 @@ lookup_protocol:
 	WARN_ON(!answer_prot->slab);
 
 	err = -ENOMEM;
+	//分配sk结构，并将tcp->prot赋值给sk->sk_prot上
 	sk = sk_alloc(net, PF_INET, GFP_KERNEL, answer_prot, kern);
 	if (!sk)
 		goto out;
@@ -324,6 +333,7 @@ lookup_protocol:
 	if (INET_PROTOSW_REUSE & answer_flags)
 		sk->sk_reuse = SK_CAN_REUSE;
 
+	//初始化 inet_sock
 	inet = inet_sk(sk);
 	inet->is_icsk = (INET_PROTOSW_ICSK & answer_flags) != 0;
 
@@ -342,6 +352,7 @@ lookup_protocol:
 
 	inet->inet_id = 0;
 
+	//初始化sk结构
 	sock_init_data(sock, sk);
 
 	sk->sk_destruct	   = inet_sock_destruct;
@@ -359,6 +370,7 @@ lookup_protocol:
 
 	sk_refcnt_debug_inc(sk);
 
+	//绑定端口
 	if (inet->inet_num) {
 		/* It assumes that any protocol which allows
 		 * the user to assign a number at socket
@@ -849,6 +861,7 @@ EXPORT_SYMBOL(inet_sendpage);
 
 INDIRECT_CALLABLE_DECLARE(int udp_recvmsg(struct sock *, struct msghdr *,
 					  size_t, int, int *));
+//接收数据
 int inet_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 		 int flags)
 {
@@ -859,6 +872,7 @@ int inet_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 	if (likely(!(flags & MSG_ERRQUEUE)))
 		sock_rps_record_flow(sk);
 
+	//调用sk->sk_prot中的recvmsg 即为tcp_recvmsg
 	err = INDIRECT_CALL_2(sk->sk_prot->recvmsg, tcp_recvmsg, udp_recvmsg,
 			      sk, msg, size, flags, &addr_len);
 	if (err >= 0)
@@ -1028,6 +1042,7 @@ static int inet_compat_ioctl(struct socket *sock, unsigned int cmd, unsigned lon
 }
 #endif /* CONFIG_COMPAT */
 
+//inet类型tcp协议的相应操作协议中 赋值到了socket结构中
 const struct proto_ops inet_stream_ops = {
 	.family		   = PF_INET,
 	.owner		   = THIS_MODULE,
@@ -1045,6 +1060,7 @@ const struct proto_ops inet_stream_ops = {
 	.setsockopt	   = sock_common_setsockopt,
 	.getsockopt	   = sock_common_getsockopt,
 	.sendmsg	   = inet_sendmsg,
+	//接收数据
 	.recvmsg	   = inet_recvmsg,
 #ifdef CONFIG_MMU
 	.mmap		   = tcp_mmap,
@@ -1131,6 +1147,7 @@ static const struct net_proto_family inet_family_ops = {
 /* Upon startup we insert all the elements in inetsw_array[] into
  * the linked list inetsw.
  */
+//相应协议的具体结构
 static struct inet_protosw inetsw_array[] =
 {
 	{
