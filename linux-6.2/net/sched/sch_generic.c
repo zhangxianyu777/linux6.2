@@ -311,6 +311,7 @@ trace:
  *				false  - hardware queue frozen backoff
  *				true   - feel free to send more pkts
  */
+//网络设备子系统函数发送数据包
 bool sch_direct_xmit(struct sk_buff *skb, struct Qdisc *q,
 		     struct net_device *dev, struct netdev_queue *txq,
 		     spinlock_t *root_lock, bool validate)
@@ -326,7 +327,7 @@ bool sch_direct_xmit(struct sk_buff *skb, struct Qdisc *q,
 	if (validate)
 		skb = validate_xmit_skb_list(skb, dev, &again);
 
-#ifdef CONFIG_XFRM_OFFLOAD
+#ifdef CONFIG_XFRM_OFFLOAD 
 	if (unlikely(again)) {
 		if (root_lock)
 			spin_lock(root_lock);
@@ -339,6 +340,7 @@ bool sch_direct_xmit(struct sk_buff *skb, struct Qdisc *q,
 	if (likely(skb)) {
 		HARD_TX_LOCK(dev, txq, smp_processor_id());
 		if (!netif_xmit_frozen_or_stopped(txq))
+			//发送
 			skb = dev_hard_start_xmit(skb, dev, txq, &ret);
 		else
 			qdisc_maybe_clear_missed(q, txq);
@@ -385,6 +387,7 @@ bool sch_direct_xmit(struct sk_buff *skb, struct Qdisc *q,
  *				>0 - queue is not empty.
  *
  */
+//发送数据
 static inline bool qdisc_restart(struct Qdisc *q, int *packets)
 {
 	spinlock_t *root_lock = NULL;
@@ -394,6 +397,7 @@ static inline bool qdisc_restart(struct Qdisc *q, int *packets)
 	bool validate;
 
 	/* Dequeue packet */
+	//从队列中取包
 	skb = dequeue_skb(q, &validate, packets);
 	if (unlikely(!skb))
 		return false;
@@ -401,12 +405,15 @@ static inline bool qdisc_restart(struct Qdisc *q, int *packets)
 	if (!(q->flags & TCQ_F_NOLOCK))
 		root_lock = qdisc_lock(q);
 
+	//获取发送队列:
 	dev = qdisc_dev(q);
 	txq = skb_get_tx_queue(dev, skb);
 
+	//发送数据包:
 	return sch_direct_xmit(skb, q, dev, txq, root_lock, validate);
 }
 
+//调度队列中的数据包
 void __qdisc_run(struct Qdisc *q)
 {
 	int quota = READ_ONCE(dev_tx_weight);
@@ -414,6 +421,7 @@ void __qdisc_run(struct Qdisc *q)
 
 	while (qdisc_restart(q, &packets)) {
 		quota -= packets;
+		//配额用完 触发软中断
 		if (quota <= 0) {
 			if (q->flags & TCQ_F_NOLOCK)
 				set_bit(__QDISC_STATE_MISSED, &q->state);

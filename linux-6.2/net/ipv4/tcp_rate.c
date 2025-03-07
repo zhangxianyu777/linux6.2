@@ -191,6 +191,7 @@ void tcp_rate_gen(struct sock *sk, u32 delivered, u32 lost,
 }
 
 /* If a gap is detected between sends, mark the socket application-limited. */
+//监测应用程序是否限制了发送速率
 void tcp_rate_check_app_limited(struct sock *sk)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
@@ -200,6 +201,7 @@ void tcp_rate_check_app_limited(struct sock *sk)
 	    /* Nothing in sending host's qdisc queues or NIC tx queue. */
 	    sk_wmem_alloc_get(sk) < SKB_TRUESIZE(1) &&
 	    /* We are not limited by CWND. */
+		//检查当前的发送窗口是否限制了发送速率
 	    tcp_packets_in_flight(tp) < tcp_snd_cwnd(tp) &&
 	    /* All lost packets have been retransmitted. */
 	    tp->lost_out <= tp->retrans_out)

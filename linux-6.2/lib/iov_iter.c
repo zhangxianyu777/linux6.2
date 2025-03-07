@@ -421,6 +421,7 @@ size_t fault_in_iov_iter_writeable(const struct iov_iter *i, size_t size)
 }
 EXPORT_SYMBOL(fault_in_iov_iter_writeable);
 
+//iov初始化
 void iov_iter_init(struct iov_iter *i, unsigned int direction,
 			const struct iovec *iov, unsigned long nr_segs,
 			size_t count)
@@ -1861,7 +1862,7 @@ ssize_t import_iovec(int type, const struct iovec __user *uvec,
 			      in_compat_syscall());
 }
 EXPORT_SYMBOL(import_iovec);
-
+//初始化iovc结构与iov_iter结构
 int import_single_range(int rw, void __user *buf, size_t len,
 		 struct iovec *iov, struct iov_iter *i)
 {
@@ -1869,9 +1870,10 @@ int import_single_range(int rw, void __user *buf, size_t len,
 		len = MAX_RW_COUNT;
 	if (unlikely(!access_ok(buf, len)))
 		return -EFAULT;
-
+	//
 	iov->iov_base = buf;
 	iov->iov_len = len;
+	//初始化iov_iter结构
 	iov_iter_init(i, rw, iov, 1, len);
 	return 0;
 }

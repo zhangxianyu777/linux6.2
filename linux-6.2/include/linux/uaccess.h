@@ -116,6 +116,7 @@ __copy_to_user(void __user *to, const void *from, unsigned long n)
 	return raw_copy_to_user(to, from, n);
 }
 
+//
 #ifdef INLINE_COPY_FROM_USER
 static inline __must_check unsigned long
 _copy_from_user(void *to, const void __user *from, unsigned long n)
@@ -124,6 +125,7 @@ _copy_from_user(void *to, const void __user *from, unsigned long n)
 	might_fault();
 	if (!should_fail_usercopy() && likely(access_ok(from, n))) {
 		instrument_copy_from_user_before(to, from, n);
+		//实际操作
 		res = raw_copy_from_user(to, from, n);
 		instrument_copy_from_user_after(to, from, n, res);
 	}
@@ -154,9 +156,11 @@ extern __must_check unsigned long
 _copy_to_user(void __user *, const void *, unsigned long);
 #endif
 
+//从用户空间拷贝
 static __always_inline unsigned long __must_check
 copy_from_user(void *to, const void __user *from, unsigned long n)
-{
+{	
+	//检查to的空间
 	if (check_copy_size(to, n, false))
 		n = _copy_from_user(to, from, n);
 	return n;

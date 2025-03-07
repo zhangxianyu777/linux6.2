@@ -168,6 +168,7 @@ static inline struct rtable *ip_route_output(struct net *net, __be32 daddr,
 	return ip_route_output_key(net, &fl4);
 }
 
+//查找路由表
 static inline struct rtable *ip_route_output_ports(struct net *net, struct flowi4 *fl4,
 						   struct sock *sk,
 						   __be32 daddr, __be32 saddr,
@@ -372,18 +373,22 @@ static inline int ip4_dst_hoplimit(const struct dst_entry *dst)
 	return hoplimit;
 }
 
+//查找邻居项
 static inline struct neighbour *ip_neigh_gw4(struct net_device *dev,
 					     __be32 daddr)
 {
 	struct neighbour *neigh;
 
+	//在邻居表中查询邻居
 	neigh = __ipv4_neigh_lookup_noref(dev, (__force u32)daddr);
 	if (unlikely(!neigh))
+		//创建新的邻居表项
 		neigh = __neigh_create(&arp_tbl, &daddr, dev, false);
 
 	return neigh;
 }
 
+//查找下一跳
 static inline struct neighbour *ip_neigh_for_gw(struct rtable *rt,
 						struct sk_buff *skb,
 						bool *is_v6gw)
@@ -392,6 +397,7 @@ static inline struct neighbour *ip_neigh_for_gw(struct rtable *rt,
 	struct neighbour *neigh;
 
 	if (likely(rt->rt_gw_family == AF_INET)) {
+		//ipv4
 		neigh = ip_neigh_gw4(dev, rt->rt_gw4);
 	} else if (rt->rt_gw_family == AF_INET6) {
 		neigh = ip_neigh_gw6(dev, &rt->rt_gw6);

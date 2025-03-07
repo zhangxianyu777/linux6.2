@@ -762,6 +762,7 @@ static int lsm_superblock_alloc(struct super_block *sb)
 			P->hook.FUNC(__VA_ARGS__);		\
 	} while (0)
 
+//遍历注册到 security_hook_heads.FUNC 链表中的每个安全 hook 调用其对应函数 P->hook.FUNC
 #define call_int_hook(FUNC, IRC, ...) ({			\
 	int RC = IRC;						\
 	do {							\

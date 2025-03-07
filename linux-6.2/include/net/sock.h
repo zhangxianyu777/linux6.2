@@ -176,7 +176,9 @@ struct sock_common {
 	union {
 		__portpair	skc_portpair;
 		struct {
+			//目的端口
 			__be16	skc_dport;
+			//本地端口
 			__u16	skc_num;
 		};
 	};
@@ -452,6 +454,7 @@ struct sock {
 		struct sk_buff	*sk_send_head;
 		struct rb_root	tcp_rtx_queue;
 	};
+	//发送缓冲队列
 	struct sk_buff_head	sk_write_queue;
 	__s32			sk_peek_off;
 	int			sk_write_pending;
@@ -1175,6 +1178,7 @@ static inline void sock_rps_reset_rxhash(struct sock *sk)
 #endif
 }
 
+//wait_woken 进入睡眠 
 #define sk_wait_event(__sk, __timeo, __condition, __wait)		\
 	({	int __rc;						\
 		release_sock(__sk);					\
@@ -1327,6 +1331,7 @@ struct proto {
 	u32			sysctl_rmem_offset;
 
 	int			max_header;
+	//不用自动绑定
 	bool			no_autobind;
 
 	struct kmem_cache	*slab;
@@ -2529,6 +2534,7 @@ static inline void sk_set_bit(int nr, struct sock *sk)
 	set_bit(nr, &sk->sk_wq_raw->flags);
 }
 
+//清除相应标志
 static inline void sk_clear_bit(int nr, struct sock *sk)
 {
 	if ((nr == SOCKWQ_ASYNC_NOSPACE || nr == SOCKWQ_ASYNC_WAITDATA) &&
@@ -2619,6 +2625,7 @@ static inline long sock_rcvtimeo(const struct sock *sk, bool noblock)
 	return noblock ? 0 : sk->sk_rcvtimeo;
 }
 
+//检查模式，并返回socket发送的超时时间
 static inline long sock_sndtimeo(const struct sock *sk, bool noblock)
 {
 	return noblock ? 0 : sk->sk_sndtimeo;

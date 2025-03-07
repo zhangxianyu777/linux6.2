@@ -696,13 +696,14 @@ static bool tcp_should_autocork(struct sock *sk, struct sk_buff *skb,
 	       refcount_read(&sk->sk_wmem_alloc) > skb->truesize &&
 	       tcp_skb_can_collapse_to(skb);
 }
-
-void tcp_push(struct sock *sk, int flags, int mss_now,
+//发送数据
+void  tcp_push(struct sock *sk, int flags, int mss_now,
 	      int nonagle, int size_goal)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sk_buff *skb;
 
+	//获取当前待发送的 skb
 	skb = tcp_write_queue_tail(sk);
 	if (!skb)
 		return;
@@ -728,6 +729,7 @@ void tcp_push(struct sock *sk, int flags, int mss_now,
 	if (flags & MSG_MORE)
 		nonagle = TCP_NAGLE_CORK;
 
+	//推送待发送的数据
 	__tcp_push_pending_frames(sk, mss_now, nonagle);
 }
 
@@ -1165,6 +1167,7 @@ void tcp_free_fastopen_req(struct tcp_sock *tp)
 	}
 }
 
+//TFO机制，在SYN中直接携带数据来加快TCP连接
 int tcp_sendmsg_fastopen(struct sock *sk, struct msghdr *msg, int *copied,
 			 size_t size, struct ubuf_info *uarg)
 {
@@ -1180,16 +1183,20 @@ int tcp_sendmsg_fastopen(struct sock *sk, struct msghdr *msg, int *copied,
 		return -EOPNOTSUPP;
 	if (tp->fastopen_req)
 		return -EALREADY; /* Another Fast Open is in progress */
-
+	
+	//分配TFO结构
 	tp->fastopen_req = kzalloc(sizeof(struct tcp_fastopen_request),
 				   sk->sk_allocation);
 	if (unlikely(!tp->fastopen_req))
 		return -ENOBUFS;
+	//记录要发送报告的数据和零拷贝信息
 	tp->fastopen_req->data = msg;
 	tp->fastopen_req->size = size;
 	tp->fastopen_req->uarg = uarg;
 
+	//处理延迟连接 
 	if (inet->defer_connect) {
+		//建立连接
 		err = tcp_connect(sk);
 		/* Same failure procedure as in tcp_v4/6_connect */
 		if (err) {
@@ -1199,11 +1206,13 @@ int tcp_sendmsg_fastopen(struct sock *sk, struct msghdr *msg, int *copied,
 		}
 	}
 	flags = (msg->msg_flags & MSG_DONTWAIT) ? O_NONBLOCK : 0;
+	//直接尝试连接，并在 SYN 中附加数据
 	err = __inet_stream_connect(sk->sk_socket, uaddr,
 				    msg->msg_namelen, flags, 1);
 	/* fastopen_req could already be freed in __inet_stream_connect
 	 * if the connection times out or gets rst
 	 */
+	//释放结构
 	if (tp->fastopen_req) {
 		*copied = tp->fastopen_req->copied;
 		tcp_free_fastopen_req(tp);
@@ -1211,9 +1220,10 @@ int tcp_sendmsg_fastopen(struct sock *sk, struct msghdr *msg, int *copied,
 	}
 	return err;
 }
-
+//tcp发送数据内部函数 分配新skb挂在发送队列中
 int tcp_sendmsg_locked(struct sock *sk, struct msghdr *msg, size_t size)
 {
+	//sock和tcp_sock可以相互转化 tcp_sock中有独有的信息
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct ubuf_info *uarg = NULL;
 	struct sk_buff *skb;
@@ -1224,27 +1234,40 @@ int tcp_sendmsg_locked(struct sock *sk, struct msghdr *msg, size_t size)
 	bool zc = false;
 	long timeo;
 
+	//读取flags
 	flags = msg->msg_flags;
 
+	//零拷贝逻辑 数据直接从用户态传输到 socket 发送队列，避免用户态和内核态拷贝
+	//这里进行检查 将标志位zc置位
 	if ((flags & MSG_ZEROCOPY) && size) {
+		//获取 TCP 发送队列的最后一个 skb
 		skb = tcp_write_queue_tail(sk);
 
+		//是否已有用户缓冲区
 		if (msg->msg_ubuf) {
 			uarg = msg->msg_ubuf;
 			net_zcopy_get(uarg);
+			//支持聚合机制
 			zc = sk->sk_route_caps & NETIF_F_SG;
+			//SOCK_ZEROCOPY置位
 		} else if (sock_flag(sk, SOCK_ZEROCOPY)) {
+			//为用户数据分配新的 uarg
 			uarg = msg_zerocopy_realloc(sk, size, skb_zcopy(skb));
 			if (!uarg) {
 				err = -ENOBUFS;
 				goto out_err;
 			}
+			//支持聚合机制
 			zc = sk->sk_route_caps & NETIF_F_SG;
 			if (!zc)
+				//不支持 清除标志位
 				uarg_to_msgzc(uarg)->zerocopy = 0;
 		}
 	}
-
+	// 检查TCP Fast Open (TFO) 和延迟连接 (defer_connect) 
+	//TFO是减少一次往返来加快TCP连接（在SYN中直接携带数据）
+	//延迟连接 避免connect时触发握手，等实际发送时触发
+	//repair
 	if (unlikely(flags & MSG_FASTOPEN || inet_sk(sk)->defer_connect) &&
 	    !tp->repair) {
 		err = tcp_sendmsg_fastopen(sk, msg, &copied_syn, size, uarg);
@@ -1256,21 +1279,26 @@ int tcp_sendmsg_locked(struct sock *sk, struct msghdr *msg, size_t size)
 
 	timeo = sock_sndtimeo(sk, flags & MSG_DONTWAIT);
 
+	//监测应用程序是否限制了发送速率
 	tcp_rate_check_app_limited(sk);  /* is sending application-limited? */
 
 	/* Wait for a connection to finish. One exception is TCP Fast Open
 	 * (passive side) where data is allowed to be sent before a connection
 	 * is fully established.
 	 */
+	//当前套接字状态不为已建立或者关闭等待，且没有启用 TFO，被动端的连接需要等待建立完成
 	if (((1 << sk->sk_state) & ~(TCPF_ESTABLISHED | TCPF_CLOSE_WAIT)) &&
 	    !tcp_passive_fastopen(sk)) {
+		//等待建立
 		err = sk_stream_wait_connect(sk, &timeo);
 		if (err != 0)
 			goto do_error;
 	}
 
+	//需要修复
 	if (unlikely(tp->repair)) {
 		if (tp->repair_queue == TCP_RECV_QUEUE) {
+			//将数据直接插入到接收队列
 			copied = tcp_send_rcvq(sk, msg, size);
 			goto out_nopush;
 		}
@@ -1282,8 +1310,11 @@ int tcp_sendmsg_locked(struct sock *sk, struct msghdr *msg, size_t size)
 		/* 'common' sending to sendq */
 	}
 
+	//初始化sockcm_init结构
 	sockcm_init(&sockc, sk);
+	//检查控制数据部分的长度
 	if (msg->msg_controllen) {
+		//发送控制消息
 		err = sock_cmsg_send(sk, msg, &sockc);
 		if (unlikely(err)) {
 			err = -EINVAL;
@@ -1292,25 +1323,29 @@ int tcp_sendmsg_locked(struct sock *sk, struct msghdr *msg, size_t size)
 	}
 
 	/* This should be in poll */
+	//相应判断 进行清除状态
 	sk_clear_bit(SOCKWQ_ASYNC_NOSPACE, sk);
 
 	/* Ok commence sending. */
 	copied = 0;
 
 restart:
+	// 获取当前 MSS
 	mss_now = tcp_send_mss(sk, &size_goal, flags);
 
 	err = -EPIPE;
 	if (sk->sk_err || (sk->sk_shutdown & SEND_SHUTDOWN))
 		goto do_error;
-
+	//循环发送数据
 	while (msg_data_left(msg)) {
 		int copy = 0;
-
+		//获取发送队列的尾部数据包
 		skb = tcp_write_queue_tail(sk);
 		if (skb)
+			//剩余容量
 			copy = size_goal - skb->len;
 
+		//容量不足 /无法合并
 		if (copy <= 0 || !tcp_skb_can_collapse_to(skb)) {
 			bool first_skb;
 
@@ -1323,14 +1358,17 @@ new_segment:
 				if (sk_flush_backlog(sk))
 					goto restart;
 			}
+			//检查重传队列和写队列是否为空
 			first_skb = tcp_rtx_and_write_queues_empty(sk);
+			//分配一个新的 skb
 			skb = tcp_stream_alloc_skb(sk, 0, sk->sk_allocation,
 						   first_skb);
 			if (!skb)
 				goto wait_for_space;
 
 			process_backlog++;
-
+			
+			//将 skb 添加到 TCP 发送队列中
 			tcp_skb_entail(sk, skb);
 			copy = size_goal;
 
@@ -1345,9 +1383,11 @@ new_segment:
 		/* Try to append data to the end of skb. */
 		if (copy > msg_data_left(msg))
 			copy = msg_data_left(msg);
-
+		
+		//不能零拷贝
 		if (!zc) {
 			bool merge = true;
+			//获取 skb 中当前的片段数量
 			int i = skb_shinfo(skb)->nr_frags;
 			struct page_frag *pfrag = sk_page_frag(sk);
 
@@ -1375,6 +1415,7 @@ new_segment:
 			if (!copy)
 				goto wait_for_space;
 
+			//将数据从消息缓冲区复制到页面片段中
 			err = skb_copy_to_page_nocache(sk, &msg->msg_iter, skb,
 						       pfrag->page,
 						       pfrag->offset,
@@ -1383,6 +1424,7 @@ new_segment:
 				goto do_error;
 
 			/* Update the skb. */
+			//合并成功
 			if (merge) {
 				skb_frag_size_add(&skb_shinfo(skb)->frags[i - 1], copy);
 			} else {
@@ -1404,6 +1446,7 @@ new_segment:
 					goto wait_for_space;
 			}
 
+			//将数据从用户空间拷贝到内核的 skb 中
 			err = skb_zerocopy_iter_stream(sk, skb, msg, copy, uarg);
 			if (err == -EMSGSIZE || err == -EEXIST) {
 				tcp_mark_push(tp, skb);
@@ -1417,11 +1460,13 @@ new_segment:
 		if (!copied)
 			TCP_SKB_CB(skb)->tcp_flags &= ~TCPHDR_PSH;
 
+		//更新 write_seq
 		WRITE_ONCE(tp->write_seq, tp->write_seq + copy);
 		TCP_SKB_CB(skb)->end_seq += copy;
 		tcp_skb_pcount_set(skb, 0);
 
 		copied += copy;
+		//检查消息中是否还有未处理的数据
 		if (!msg_data_left(msg)) {
 			if (unlikely(flags & MSG_EOR))
 				TCP_SKB_CB(skb)->eor = 1;
@@ -1431,6 +1476,8 @@ new_segment:
 		if (skb->len < size_goal || (flags & MSG_OOB) || unlikely(tp->repair))
 			continue;
 
+		//强制推送数据
+		//未发送的数据超过最大窗口的一半
 		if (forced_push(tp)) {
 			tcp_mark_push(tp, skb);
 			__tcp_push_pending_frames(sk, mss_now, TCP_NAGLE_PUSH);
@@ -1441,6 +1488,7 @@ new_segment:
 wait_for_space:
 		set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 		if (copied)
+			//推送已经拷贝的数据
 			tcp_push(sk, flags & ~MSG_MORE, mss_now,
 				 TCP_NAGLE_PUSH, size_goal);
 
@@ -1477,6 +1525,7 @@ out_err:
 }
 EXPORT_SYMBOL_GPL(tcp_sendmsg_locked);
 
+//tcp发送数据入口函数
 int tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 {
 	int ret;

@@ -60,7 +60,6 @@ void tcp_mstamp_refresh(struct tcp_sock *tp)
 
 static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 			   int push_one, gfp_t gfp);
-
 /* Account for new data that has been sent to the network. */
 static void tcp_event_new_data_sent(struct sock *sk, struct sk_buff *skb)
 {
@@ -1231,6 +1230,10 @@ INDIRECT_CALLABLE_DECLARE(void tcp_v4_send_check(struct sock *sk, struct sk_buff
  * We are working here with either a clone of the original
  * SKB, or a fresh unique copy made by the retransmit engine.
  */
+/*复制或者拷贝skb，构造skb中的tcp首部，并将调用网络层的发送函数发送skb；
+在发送前，首先需要克隆或者复制skb，因为在成功发送到网络设备之后，
+skb会释放，而tcp层不能真正的释放，是需要等到对该数据段的ack才可以释放；
+然后构造tcp首部和选项；最后调用网络层提供的发送回调函数发送skb*/
 static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 			      int clone_it, gfp_t gfp_mask, u32 rcv_nxt)
 {
@@ -1251,13 +1254,16 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 	prior_wstamp = tp->tcp_wstamp_ns;
 	tp->tcp_wstamp_ns = max(tp->tcp_wstamp_ns, tp->tcp_clock_cache);
 	skb_set_delivery_time(skb, tp->tcp_wstamp_ns, true);
+	//需要克隆
 	if (clone_it) {
 		oskb = skb;
 
 		tcp_skb_tsorted_save(oskb) {
 			if (unlikely(skb_cloned(oskb)))
+				//克隆过进行复制
 				skb = pskb_copy(oskb, gfp_mask);
 			else
+				//进行克隆
 				skb = skb_clone(oskb, gfp_mask);
 		} tcp_skb_tsorted_restore(oskb);
 
@@ -1272,10 +1278,11 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 	inet = inet_sk(sk);
 	tcb = TCP_SKB_CB(skb);
 	memset(&opts, 0, sizeof(opts));
-
+	//计算SYN包tcp选项的长度
 	if (unlikely(tcb->tcp_flags & TCPHDR_SYN)) {
 		tcp_options_size = tcp_syn_options(sk, skb, &opts, &md5);
 	} else {
+		//计算已连接状态的tcp选项长度
 		tcp_options_size = tcp_established_options(sk, skb, &opts,
 							   &md5);
 		/* Force a PSH flag on all (GSO) packets to expedite GRO flush
@@ -1289,6 +1296,7 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 		if (tcp_skb_pcount(skb) > 1)
 			tcb->tcp_flags |= TCPHDR_PSH;
 	}
+	//tcp头部长度
 	tcp_header_size = tcp_options_size + sizeof(struct tcphdr);
 
 	/* if no packet is in qdisc/device queue, then allow XPS to select
@@ -1307,7 +1315,9 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 	 */
 	skb->pfmemalloc = 0;
 
+	//在skb前加入tcp头
 	skb_push(skb, tcp_header_size);
+	//设置skb中传输层头部偏移
 	skb_reset_transport_header(skb);
 
 	skb_orphan(skb);
@@ -1318,6 +1328,7 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 	skb_set_dst_pending_confirm(skb, sk->sk_dst_pending_confirm);
 
 	/* Build TCP header and checksum it. */
+	//构造tcp头部
 	th = (struct tcphdr *)skb->data;
 	th->source		= inet->inet_sport;
 	th->dest		= inet->inet_dport;
@@ -1350,7 +1361,7 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 		 */
 		th->window	= htons(min(tp->rcv_wnd, 65535U));
 	}
-
+	//写入tcp选项
 	tcp_options_write(th, tp, &opts);
 
 #ifdef CONFIG_TCP_MD5SIG
@@ -1363,8 +1374,10 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 #endif
 
 	/* BPF prog is the last one writing header option */
+	//BPF 程序钩子，用于修改 TCP 头部选项
 	bpf_skops_write_hdr_opt(sk, skb, NULL, NULL, 0, &opts);
 
+	//相应的检查函数
 	INDIRECT_CALL_INET(icsk->icsk_af_ops->send_check,
 			   tcp_v6_send_check, tcp_v4_send_check,
 			   sk, skb);
@@ -1394,8 +1407,10 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 	memset(skb->cb, 0, max(sizeof(struct inet_skb_parm),
 			       sizeof(struct inet6_skb_parm)));
 
+	//记录发包时间 到skb->skb_mstamp_ns
 	tcp_add_tx_delay(skb, tp);
 
+	//相应的下一层函数
 	err = INDIRECT_CALL_INET(icsk->icsk_af_ops->queue_xmit,
 				 inet6_csk_xmit, ip_queue_xmit,
 				 sk, skb, &inet->cork.fl);
@@ -2598,6 +2613,7 @@ void tcp_chrono_stop(struct sock *sk, const enum tcp_chrono type)
  * Returns true, if no segments are in flight and we have queued segments,
  * but cannot send anything now because of SWS or another problem.
  */
+//tcp 发送
 static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 			   int push_one, gfp_t gfp)
 {
@@ -2610,10 +2626,11 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 	u32 max_segs;
 
 	sent_pkts = 0;
-
+	//刷新 tcp_sock 的时间戳信息
 	tcp_mstamp_refresh(tp);
 	if (!push_one) {
 		/* Do MTU probing. */
+		//探测网络路径的最大传输单元MTU
 		result = tcp_mtu_probe(sk);
 		if (!result) {
 			return false;
@@ -2621,11 +2638,12 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 			sent_pkts = 1;
 		}
 	}
-
+	//最大分段数
 	max_segs = tcp_tso_segs(sk, mss_now);
+	//循环获取待发送skb 获取队列中第一个数据包
 	while ((skb = tcp_send_head(sk))) {
 		unsigned int limit;
-
+		//修复模式
 		if (unlikely(tp->repair) && tp->repair_queue == TCP_SEND_QUEUE) {
 			/* "skb_mstamp_ns" is used as a start point for the retransmit timer */
 			tp->tcp_wstamp_ns = tp->tcp_clock_cache;
@@ -2634,13 +2652,13 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 			tcp_init_tso_segs(skb, mss_now);
 			goto repair; /* Skip network transmission */
 		}
-
+		//TCP 流量控制
 		if (tcp_pacing_check(sk))
 			break;
-
+		//分段数
 		tso_segs = tcp_init_tso_segs(skb, mss_now);
 		BUG_ON(!tso_segs);
-
+		//滑动窗口相关 测试是否有足够的拥塞窗口空间 
 		cwnd_quota = tcp_cwnd_test(tp, skb);
 		if (!cwnd_quota) {
 			if (push_one == 2)
@@ -2649,18 +2667,20 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 			else
 				break;
 		}
-
+		//是否存在接收窗口限制
 		if (unlikely(!tcp_snd_wnd_test(tp, skb, mss_now))) {
 			is_rwnd_limited = true;
 			break;
 		}
 
 		if (tso_segs == 1) {
+			//Nagle 算法
 			if (unlikely(!tcp_nagle_test(tp, skb, mss_now,
 						     (tcp_skb_is_last(sk, skb) ?
 						      nonagle : TCP_NAGLE_PUSH))))
 				break;
 		} else {
+			//是否应该延迟分段的发
 			if (!push_one &&
 			    tcp_tso_should_defer(sk, skb, &is_cwnd_limited,
 						 &is_rwnd_limited, max_segs))
@@ -2676,6 +2696,7 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 						    nonagle);
 
 		if (skb->len > limit &&
+			// 对数据包进行分段处理
 		    unlikely(tso_fragment(sk, skb, limit, mss_now, gfp)))
 			break;
 
@@ -2689,7 +2710,7 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 		 */
 		if (TCP_SKB_CB(skb)->end_seq == TCP_SKB_CB(skb)->seq)
 			break;
-
+		//发送skb
 		if (unlikely(tcp_transmit_skb(sk, skb, 1, gfp)))
 			break;
 
@@ -2864,6 +2885,7 @@ rearm_timer:
  * TCP_CORK or attempt at coalescing tiny packets.
  * The socket must be locked by the caller.
  */
+//检查套接字状态 发送数据
 void __tcp_push_pending_frames(struct sock *sk, unsigned int cur_mss,
 			       int nonagle)
 {
@@ -2873,7 +2895,7 @@ void __tcp_push_pending_frames(struct sock *sk, unsigned int cur_mss,
 	 */
 	if (unlikely(sk->sk_state == TCP_CLOSE))
 		return;
-
+	//发送数据
 	if (tcp_write_xmit(sk, cur_mss, nonagle, 0,
 			   sk_gfp_mask(sk, GFP_ATOMIC)))
 		tcp_check_probe_timer(sk);

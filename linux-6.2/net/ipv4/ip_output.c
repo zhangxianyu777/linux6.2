@@ -96,27 +96,33 @@ void ip_send_check(struct iphdr *iph)
 }
 EXPORT_SYMBOL(ip_send_check);
 
+//
 int __ip_local_out(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	struct iphdr *iph = ip_hdr(skb);
-
+	//更新长度
 	iph->tot_len = htons(skb->len);
+	//填充效验和
 	ip_send_check(iph);
 
 	/* if egress device is enslaved to an L3 master device pass the
 	 * skb to its handler for processing
 	 */
+	//处理l3主设备 VRF（虚拟路由）
 	skb = l3mdev_ip_out(sk, skb);
 	if (unlikely(!skb))
 		return 0;
 
+	//设置 skb->protocol
 	skb->protocol = htons(ETH_P_IP);
 
+	//NF_INET_LOCAL_OUT 挂载点 回调dst_output
 	return nf_hook(NFPROTO_IPV4, NF_INET_LOCAL_OUT,
 		       net, sk, skb, NULL, skb_dst(skb)->dev,
 		       dst_output);
 }
 
+//处理ip数据包
 int ip_local_out(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	int err;
@@ -191,6 +197,7 @@ int ip_build_and_send_pkt(struct sk_buff *skb, const struct sock *sk,
 }
 EXPORT_SYMBOL_GPL(ip_build_and_send_pkt);
 
+//ip层内部函数
 static int ip_finish_output2(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	struct dst_entry *dst = skb_dst(skb);
@@ -200,17 +207,19 @@ static int ip_finish_output2(struct net *net, struct sock *sk, struct sk_buff *s
 	struct neighbour *neigh;
 	bool is_v6gw = false;
 
+	//多播/广播
 	if (rt->rt_type == RTN_MULTICAST) {
 		IP_UPD_PO_STATS(net, IPSTATS_MIB_OUTMCAST, skb->len);
 	} else if (rt->rt_type == RTN_BROADCAST)
 		IP_UPD_PO_STATS(net, IPSTATS_MIB_OUTBCAST, skb->len);
 
+	//扩充二层头部所需空间
 	if (unlikely(skb_headroom(skb) < hh_len && dev->header_ops)) {
 		skb = skb_expand_head(skb, hh_len);
 		if (!skb)
 			return -ENOMEM;
 	}
-
+	//LWT 隧道封装
 	if (lwtunnel_xmit_redirect(dst->lwtstate)) {
 		int res = lwtunnel_xmit(skb);
 
@@ -219,12 +228,14 @@ static int ip_finish_output2(struct net *net, struct sock *sk, struct sk_buff *s
 	}
 
 	rcu_read_lock_bh();
+	//查找下一跳
 	neigh = ip_neigh_for_gw(rt, skb, &is_v6gw);
 	if (!IS_ERR(neigh)) {
 		int res;
 
 		sock_confirm_neigh(skb, neigh);
 		/* if crossing protocols, can not use the cached header */
+		//邻居子系统进入
 		res = neigh_output(neigh, skb, is_v6gw);
 		rcu_read_unlock_bh();
 		return res;
@@ -246,7 +257,7 @@ static int ip_finish_output_gso(struct net *net, struct sock *sk,
 
 	/* common case: seglen is <= mtu
 	 */
-	if (skb_gso_validate_network_len(skb, mtu))
+	if (skb_gso_validate_neip_finish_output2twork_len(skb, mtu))
 		return ip_finish_output2(net, sk, skb);
 
 	/* Slowpath -  GSO segment length exceeds the egress MTU.
@@ -288,7 +299,7 @@ static int ip_finish_output_gso(struct net *net, struct sock *sk,
 static int __ip_finish_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	unsigned int mtu;
-
+	//据包经过 SNAT 变更，可能需要 重新选路
 #if defined(CONFIG_NETFILTER) && defined(CONFIG_XFRM)
 	/* Policy lookup after SNAT yielded a new policy */
 	if (skb_dst(skb)->xfrm) {
@@ -296,23 +307,28 @@ static int __ip_finish_output(struct net *net, struct sock *sk, struct sk_buff *
 		return dst_output(net, sk, skb);
 	}
 #endif
+	//获取 MTU	
 	mtu = ip_skb_dst_mtu(sk, skb);
+	//判断 GSO
 	if (skb_is_gso(skb))
 		return ip_finish_output_gso(net, sk, skb, mtu);
-
+	//需要 IP 分片
 	if (skb->len > mtu || IPCB(skb)->frag_max_size)
 		return ip_fragment(net, sk, skb, mtu, ip_finish_output2);
-
+	//进一步处理
 	return ip_finish_output2(net, sk, skb);
 }
 
+//ip层内部函数
 static int ip_finish_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	int ret;
 
+	//BPF_PROG_TYPE_CGROUP_SKB 执行
 	ret = BPF_CGROUP_RUN_PROG_INET_EGRESS(sk, skb);
 	switch (ret) {
 	case NET_XMIT_SUCCESS:
+		//继续发送
 		return __ip_finish_output(net, sk, skb);
 	case NET_XMIT_CN:
 		return __ip_finish_output(net, sk, skb) ? : ret;
@@ -418,15 +434,19 @@ int ip_mc_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 			    !(IPCB(skb)->flags & IPSKB_REROUTED));
 }
 
+//ip层内部函数 
 int ip_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	struct net_device *dev = skb_dst(skb)->dev, *indev = skb->dev;
 
+	//更新 IP 统计数据
 	IP_UPD_PO_STATS(net, IPSTATS_MIB_OUT, skb->len);
-
+ 
+	//设置dev 与 protocol
 	skb->dev = dev;
 	skb->protocol = htons(ETH_P_IP);
 
+	//NF_INET_POST_ROUTING 回调ip_finish_output
 	return NF_HOOK_COND(NFPROTO_IPV4, NF_INET_POST_ROUTING,
 			    net, sk, skb, indev, dev,
 			    ip_finish_output,
@@ -450,6 +470,7 @@ static void ip_copy_addrs(struct iphdr *iph, const struct flowi4 *fl4)
 }
 
 /* Note: skb->sk can be different from sk, in case of tunnels */
+//网络层发包
 int __ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl,
 		    __u8 tos)
 {
@@ -467,12 +488,14 @@ int __ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl,
 	rcu_read_lock();
 	inet_opt = rcu_dereference(inet->inet_opt);
 	fl4 = &fl->u.ip4;
+	//获取路由缓存
 	rt = skb_rtable(skb);
 	if (rt)
 		goto packet_routed;
 
 	/* Make sure we can route this packet. */
 	rt = (struct rtable *)__sk_dst_check(sk, 0);
+	//路由查找
 	if (!rt) {
 		__be32 daddr;
 
@@ -485,6 +508,7 @@ int __ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl,
 		 * keep trying until route appears or the connection times
 		 * itself out.
 		 */
+		//查找路由
 		rt = ip_route_output_ports(net, fl4, sk,
 					   daddr, inet->inet_saddr,
 					   inet->inet_dport,
@@ -494,17 +518,22 @@ int __ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl,
 					   sk->sk_bound_dev_if);
 		if (IS_ERR(rt))
 			goto no_route;
+		//设置sk中的结构
 		sk_setup_caps(sk, &rt->dst);
 	}
+	//将路由信息绑定到 skb
 	skb_dst_set_noref(skb, &rt->dst);
 
 packet_routed:
+	//严格路由选项 &&无路由严格路由选项  &&无路由
 	if (inet_opt && inet_opt->opt.is_strictroute && rt->rt_uses_gateway)
 		goto no_route;
 
 	/* OK, we know where to send it, allocate and build IP header. */
+	//添加ip头部
 	skb_push(skb, sizeof(struct iphdr) + (inet_opt ? inet_opt->opt.optlen : 0));
 	skb_reset_network_header(skb);
+	//构造ip头
 	iph = ip_hdr(skb);
 	*((__be16 *)iph) = htons((4 << 12) | (5 << 8) | (tos & 0xff));
 	if (ip_dont_fragment(sk, &rt->dst) && !skb->ignore_df)
@@ -517,18 +546,19 @@ packet_routed:
 
 	/* Transport layer set skb->h.foo itself. */
 
+	//构造ip选项
 	if (inet_opt && inet_opt->opt.optlen) {
 		iph->ihl += inet_opt->opt.optlen >> 2;
 		ip_options_build(skb, &inet_opt->opt, inet->inet_daddr, rt);
 	}
-
+	//设置id
 	ip_select_ident_segs(net, skb, sk,
 			     skb_shinfo(skb)->gso_segs ?: 1);
 
 	/* TODO : should we use skb->sk here instead of sk ? */
 	skb->priority = sk->sk_priority;
 	skb->mark = sk->sk_mark;
-
+	//下一步执行
 	res = ip_local_out(net, sk, skb);
 	rcu_read_unlock();
 	return res;
@@ -541,6 +571,7 @@ no_route:
 }
 EXPORT_SYMBOL(__ip_queue_xmit);
 
+//网络层发包入口函数
 int ip_queue_xmit(struct sock *sk, struct sk_buff *skb, struct flowi *fl)
 {
 	return __ip_queue_xmit(sk, skb, fl, inet_sk(sk)->tos);

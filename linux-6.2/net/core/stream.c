@@ -53,8 +53,10 @@ void sk_stream_write_space(struct sock *sk)
  *
  * Must be called with the socket locked.
  */
+//等待连接建立
 int sk_stream_wait_connect(struct sock *sk, long *timeo_p)
 {
+	//定义等待队列、注册回调函数、关联进程描述符
 	DEFINE_WAIT_FUNC(wait, woken_wake_function);
 	struct task_struct *tsk = current;
 	int done;
@@ -63,6 +65,7 @@ int sk_stream_wait_connect(struct sock *sk, long *timeo_p)
 		int err = sock_error(sk);
 		if (err)
 			return err;
+		// 如果当前套接字状态不是 SYN_SENT 或 SYN_RECV，说明连接已建立或关闭
 		if ((1 << sk->sk_state) & ~(TCPF_SYN_SENT | TCPF_SYN_RECV))
 			return -EPIPE;
 		if (!*timeo_p)
@@ -70,13 +73,18 @@ int sk_stream_wait_connect(struct sock *sk, long *timeo_p)
 		if (signal_pending(tsk))
 			return sock_intr_errno(*timeo_p);
 
+		//当前进程添加到sk的等待队列
 		add_wait_queue(sk_sleep(sk), &wait);
+		//表示套接字有待处理的写操作
 		sk->sk_write_pending++;
+		//睡眠
 		done = sk_wait_event(sk, timeo_p,
 				     !sk->sk_err &&
 				     !((1 << sk->sk_state) &
 				       ~(TCPF_ESTABLISHED | TCPF_CLOSE_WAIT)), &wait);
+		// 移除当前进程的等待队列
 		remove_wait_queue(sk_sleep(sk), &wait);
+		// 写操作处理完成
 		sk->sk_write_pending--;
 	} while (!done);
 	return 0;

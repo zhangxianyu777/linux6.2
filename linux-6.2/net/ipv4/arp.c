@@ -220,6 +220,7 @@ static bool arp_key_eq(const struct neighbour *neigh, const void *pkey)
 	return neigh_key_eq32(neigh, pkey);
 }
 
+//初始化arp表项
 static int arp_constructor(struct neighbour *neigh)
 {
 	__be32 addr;
