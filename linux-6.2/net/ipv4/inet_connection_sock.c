@@ -298,6 +298,7 @@ static bool inet_bhash2_addr_any_conflict(const struct sock *sk, int port, int l
  * Find an open port number for the socket.  Returns with the
  * inet_bind_hashbucket locks held if successful.
  */
+//寻找一个未被占用的端口
 static struct inet_bind_hashbucket *
 inet_csk_find_open_port(const struct sock *sk, struct inet_bind_bucket **tb_ret,
 			struct inet_bind2_bucket **tb2_ret,
@@ -316,7 +317,9 @@ inet_csk_find_open_port(const struct sock *sk, struct inet_bind_bucket **tb_ret,
 ports_exhausted:
 	attempt_half = (sk->sk_reuse == SK_CAN_REUSE) ? 1 : 0;
 other_half_scan:
+	//获取当前进程允许使用的本地端口范围
 	inet_get_local_port_range(net, &low, &high);
+	//将其变为开区间
 	high++; /* [32768, 60999] -> [32768, 61000[ */
 	if (high - low < 4)
 		attempt_half = 0;
@@ -324,42 +327,56 @@ other_half_scan:
 		int half = low + (((high - low) >> 2) << 1);
 
 		if (attempt_half == 1)
+			//取前一半
 			high = half;
 		else
 			low = half;
 	}
+	//剩下的大小
 	remaining = high - low;
 	if (likely(remaining > 1))
 		remaining &= ~1U;
 
+	//随机生成一个offset
 	offset = get_random_u32_below(remaining);
 	/* __inet_hash_connect() favors ports having @low parity
 	 * We do the opposite to not pollute connect() users.
 	 */
+	// offset 调整为一个偶数。
 	offset |= 1U;
 
 other_parity_scan:
+	//计算出端口
 	port = low + offset;
+	//逐步递增端口来检查一系列的端口
 	for (i = 0; i < remaining; i += 2, port += 2) {
 		if (unlikely(port >= high))
 			port -= remaining;
+		//是否是系统保留的本地端口
 		if (inet_is_local_reserved_port(net, port))
 			continue;
+		//据端口计算哈希值，并找到对应的哈希桶。
+		//哈希桶用于存储绑定到该端口的 inet_bind_bucket
 		head = &hinfo->bhash[inet_bhashfn(net, port,
 						  hinfo->bhash_size)];
 		spin_lock_bh(&head->lock);
+		//是否使用了 bhash2
 		if (inet_use_bhash2_on_bind(sk)) {
 			if (inet_bhash2_addr_any_conflict(sk, port, l3mdev, relax, false))
 				goto next_port;
 		}
-
+		//计算与当前端口关联的第二级哈希桶
 		head2 = inet_bhashfn_portaddr(hinfo, sk, net, port);
 		spin_lock(&head2->lock);
+		//查找与当前端口相关联的 inet_bind2_bucket
 		tb2 = inet_bind2_bucket_find(head2, net, port, l3mdev, sk);
+		//遍历与当前端口绑定的所有 inet_bind_bucket。通过 tb 指针访问每个桶
 		inet_bind_bucket_for_each(tb, &head->chain)
 			if (inet_bind_bucket_match(tb, net, port, l3mdev)) {
+				//没有与已绑定的 inet_bind_bucket 冲突
 				if (!inet_csk_bind_conflict(sk, tb, tb2,
 							    relax, false))
+					//成功找到
 					goto success;
 				spin_unlock(&head2->lock);
 				goto next_port;
@@ -483,6 +500,7 @@ void inet_csk_update_fastreuse(struct inet_bind_bucket *tb,
  * if snum is zero it means select any available local port.
  * We try to allocate an odd port (and leave even ports for connect())
  */
+//分配端口
 int inet_csk_get_port(struct sock *sk, unsigned short snum)
 {
 	struct inet_hashinfo *hinfo = tcp_or_dccp_get_hashinfo(sk);
@@ -498,7 +516,9 @@ int inet_csk_get_port(struct sock *sk, unsigned short snum)
 
 	l3mdev = inet_sk_bound_l3mdev(sk);
 
+	//未指定端口
 	if (!port) {
+		//查找可用端口
 		head = inet_csk_find_open_port(sk, &tb, &tb2, &head2, &port);
 		if (!head)
 			return ret;
@@ -508,6 +528,7 @@ int inet_csk_get_port(struct sock *sk, unsigned short snum)
 		if (tb && tb2)
 			goto success;
 		found_port = true;
+	//指定端口
 	} else {
 		head = &hinfo->bhash[inet_bhashfn(net, port,
 						  hinfo->bhash_size)];

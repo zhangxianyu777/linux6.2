@@ -66,6 +66,7 @@ EXPORT_SYMBOL(blackhole_netdev);
 /* The higher levels take care of making this non-reentrant (it's
  * called with bh's disabled).
  */
+//本机网络io的发送
 static netdev_tx_t loopback_xmit(struct sk_buff *skb,
 				 struct net_device *dev)
 {
@@ -76,6 +77,7 @@ static netdev_tx_t loopback_xmit(struct sk_buff *skb,
 	/* do not fool net_timestamp_check() with various clock bases */
 	skb_clear_tstamp(skb);
 
+	//剥离和源socket的联系
 	skb_orphan(skb);
 
 	/* Before queueing this packet to __netif_rx(),
@@ -86,6 +88,7 @@ static netdev_tx_t loopback_xmit(struct sk_buff *skb,
 	skb->protocol = eth_type_trans(skb, dev);
 
 	len = skb->len;
+	//调用__netif_rx
 	if (likely(__netif_rx(skb) == NET_RX_SUCCESS))
 		dev_lstats_add(dev, len);
 

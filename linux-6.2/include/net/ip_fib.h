@@ -306,6 +306,7 @@ static inline struct fib_table *fib_new_table(struct net *net, u32 id)
 	return fib_get_table(net, id);
 }
 
+//查找路由核心函数
 static inline int fib_lookup(struct net *net, const struct flowi4 *flp,
 			     struct fib_result *res, unsigned int flags)
 {
@@ -314,6 +315,7 @@ static inline int fib_lookup(struct net *net, const struct flowi4 *flp,
 
 	rcu_read_lock();
 
+	//查询main路由表
 	tb = fib_get_table(net, RT_TABLE_MAIN);
 	if (tb)
 		err = fib_table_lookup(tb, flp, res, flags | FIB_LOOKUP_NOREF);

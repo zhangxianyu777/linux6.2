@@ -588,10 +588,12 @@ INDIRECT_CALLABLE_DECLARE(struct dst_entry *ip6_dst_check(struct dst_entry *,
 							  u32));
 INDIRECT_CALLABLE_DECLARE(struct dst_entry *ipv4_dst_check(struct dst_entry *,
 							   u32));
+//检查sk中的路由信息
 struct dst_entry *__sk_dst_check(struct sock *sk, u32 cookie)
 {
 	struct dst_entry *dst = __sk_dst_get(sk);
 
+	//执行ipv4_dst_check 检查
 	if (dst && dst->obsolete &&
 	    INDIRECT_CALL_INET(dst->ops->check, ip6_dst_check, ipv4_dst_check,
 			       dst, cookie) == NULL) {
@@ -2757,12 +2759,14 @@ failure:
 }
 EXPORT_SYMBOL(sock_alloc_send_pskb);
 
+//发送控制信息
 int __sock_cmsg_send(struct sock *sk, struct cmsghdr *cmsg,
 		     struct sockcm_cookie *sockc)
 {
 	u32 tsflags;
-
+	//判断类型
 	switch (cmsg->cmsg_type) {
+	//设置数据包的标记
 	case SO_MARK:
 		if (!ns_capable(sock_net(sk)->user_ns, CAP_NET_RAW) &&
 		    !ns_capable(sock_net(sk)->user_ns, CAP_NET_ADMIN))
@@ -2771,6 +2775,7 @@ int __sock_cmsg_send(struct sock *sk, struct cmsghdr *cmsg,
 			return -EINVAL;
 		sockc->mark = *(u32 *)CMSG_DATA(cmsg);
 		break;
+	//设置时间戳标志
 	case SO_TIMESTAMPING_OLD:
 		if (cmsg->cmsg_len != CMSG_LEN(sizeof(u32)))
 			return -EINVAL;
@@ -2782,6 +2787,7 @@ int __sock_cmsg_send(struct sock *sk, struct cmsghdr *cmsg,
 		sockc->tsflags &= ~SOF_TIMESTAMPING_TX_RECORD_MASK;
 		sockc->tsflags |= tsflags;
 		break;
+	//设置网络包的预定发送时间
 	case SCM_TXTIME:
 		if (!sock_flag(sk, SOCK_TXTIME))
 			return -EINVAL;
@@ -2800,17 +2806,20 @@ int __sock_cmsg_send(struct sock *sk, struct cmsghdr *cmsg,
 }
 EXPORT_SYMBOL(__sock_cmsg_send);
 
+//发送控制信息
 int sock_cmsg_send(struct sock *sk, struct msghdr *msg,
 		   struct sockcm_cookie *sockc)
 {
 	struct cmsghdr *cmsg;
 	int ret;
 
+	//遍历控制信息
 	for_each_cmsghdr(cmsg, msg) {
 		if (!CMSG_OK(msg, cmsg))
 			return -EINVAL;
 		if (cmsg->cmsg_level != SOL_SOCKET)
 			continue;
+		//发送控制消息
 		ret = __sock_cmsg_send(sk, cmsg, sockc);
 		if (ret)
 			return ret;
@@ -2969,10 +2978,10 @@ EXPORT_SYMBOL_GPL(__sk_flush_backlog);
 //没有接收到足够的数据，进行阻塞
 int sk_wait_data(struct sock *sk, long *timeo, const struct sk_buff *skb)
 {
-	//绑定回调函数
+	//绑定回调函数 woken_wake_function置为wait.func
 	DEFINE_WAIT_FUNC(wait, woken_wake_function);
 	int rc;
-	//当前进程关联到等待队列上
+	//当前进程关联到等待队列上 sk_sleep(sk)获取sock对象的等待队列表头
 	add_wait_queue(sk_sleep(sk), &wait);
 	//设置进程状态
 	sk_set_bit(SOCKWQ_ASYNC_WAITDATA, sk);

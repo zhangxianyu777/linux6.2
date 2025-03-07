@@ -239,13 +239,14 @@ static const struct net_proto_family __rcu *net_families[NPROTO] __read_mostly;
  *	too long an error code of -EINVAL is returned. If the copy gives
  *	invalid addresses -EFAULT is returned. On a success 0 is returned.
  */
-
+//从用户空间读取地址
 int move_addr_to_kernel(void __user *uaddr, int ulen, struct sockaddr_storage *kaddr)
 {
 	if (ulen < 0 || ulen > sizeof(struct sockaddr_storage))
 		return -EINVAL;
 	if (ulen == 0)
 		return 0;
+		//实际读取操作
 	if (copy_from_user(kaddr, uaddr, ulen))
 		return -EFAULT;
 	return audit_sockaddr(ulen, kaddr);
@@ -545,13 +546,17 @@ EXPORT_SYMBOL(sockfd_lookup);
 
 static struct socket *sockfd_lookup_light(int fd, int *err, int *fput_needed)
 {
+	//获取fd结构
 	struct fd f = fdget(fd);
 	struct socket *sock;
 
 	*err = -EBADF;
+	//文件存在
 	if (f.file) {
+		//获取socket结构
 		sock = sock_from_file(f.file);
 		if (likely(sock)) {
+			//检查f.flags是否有FDPUT_FPUT位
 			*fput_needed = f.flags & FDPUT_FPUT;
 			return sock;
 		}
@@ -713,8 +718,10 @@ INDIRECT_CALLABLE_DECLARE(int inet_sendmsg(struct socket *, struct msghdr *,
 					   size_t));
 INDIRECT_CALLABLE_DECLARE(int inet6_sendmsg(struct socket *, struct msghdr *,
 					    size_t));
+//发送信息
 static inline int sock_sendmsg_nosec(struct socket *sock, struct msghdr *msg)
 {
+	//调用sock->ops->sendmsg,其socket创建时被赋为inet_sendmsg
 	int ret = INDIRECT_CALL_INET(sock->ops->sendmsg, inet6_sendmsg,
 				     inet_sendmsg, sock, msg,
 				     msg_data_left(msg));
@@ -730,11 +737,13 @@ static inline int sock_sendmsg_nosec(struct socket *sock, struct msghdr *msg)
  *	Sends @msg through @sock, passing through LSM.
  *	Returns the number of bytes sent, or an error code.
  */
+//通过sock结构发送msg
 int sock_sendmsg(struct socket *sock, struct msghdr *msg)
 {
+	//安全检查 开启CONFIG_SECURITY_NETWORK配置时 遍历hook表并执行
 	int err = security_socket_sendmsg(sock, msg,
 					  msg_data_left(msg));
-
+	//err为0执行sock_sendmsg_nosec
 	return err ?: sock_sendmsg_nosec(sock, msg);
 }
 EXPORT_SYMBOL(sock_sendmsg);
@@ -2117,38 +2126,47 @@ SYSCALL_DEFINE3(getpeername, int, fd, struct sockaddr __user *, usockaddr,
  *	space and check the user space data area is readable before invoking
  *	the protocol.
  */
+//初始化msg 查找socket结构
 int __sys_sendto(int fd, void __user *buff, size_t len, unsigned int flags,
 		 struct sockaddr __user *addr,  int addr_len)
 {
 	struct socket *sock;
 	struct sockaddr_storage address;
 	int err;
+	//msghdr
 	struct msghdr msg;
 	struct iovec iov;
 	int fput_needed;
-
+	//初始化iov 与 msg.msg_iter
 	err = import_single_range(ITER_SOURCE, buff, len, &iov, &msg.msg_iter);
 	if (unlikely(err))
 		return err;
-	sock = sockfd_lookup_light(fd, &err, &fput_needed);
+	//根据fd找到对应的socket结构，判断是否有FDPUT_FPUT位 
+	//其中记录着各种协议栈的函数地址
+，	sock = sockfd_lookup_light(fd, &err, &fput_needed);
 	if (!sock)
 		goto out;
 
+	//初始化msg相应结构
 	msg.msg_name = NULL;
 	msg.msg_control = NULL;
 	msg.msg_controllen = 0;
 	msg.msg_namelen = 0;
 	msg.msg_ubuf = NULL;
+	//存储对端地址信息
 	if (addr) {
+		//将地址复制到内核
 		err = move_addr_to_kernel(addr, addr_len, &address);
 		if (err < 0)
 			goto out_put;
 		msg.msg_name = (struct sockaddr *)&address;
 		msg.msg_namelen = addr_len;
 	}
+	//非阻塞模式
 	if (sock->file->f_flags & O_NONBLOCK)
 		flags |= MSG_DONTWAIT;
 	msg.msg_flags = flags;
+	//调用sock_sendmsg 发送msg
 	err = sock_sendmsg(sock, &msg);
 
 out_put:

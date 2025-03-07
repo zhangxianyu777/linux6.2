@@ -520,6 +520,7 @@ DECLARE_STATIC_KEY_FALSE(force_irqthreads_key);
 
 #ifndef local_softirq_pending
 
+//相应架构没有定义时
 #ifndef local_softirq_pending_ref
 //local_softirq_pending_ref实际上是irq_stat结构中的__softirq_pending，__softirq_pending字段中的每一个bit，对应着某一个软中断，某个bit被置位，说明有相应的软中断等待处理。
 #define local_softirq_pending_ref irq_stat.__softirq_pending

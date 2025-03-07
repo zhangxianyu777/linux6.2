@@ -11,6 +11,7 @@
 
 struct task_struct;
 
+//存储该 CPU 核心的一些运行时信息
 struct pcpu_hot {
 	union {
 		struct {
@@ -22,6 +23,7 @@ struct pcpu_hot {
 #endif
 			unsigned long		top_of_stack;
 			void			*hardirq_stack_ptr;
+			//存储软中断状态
 			u16			softirq_pending;
 #ifdef CONFIG_X86_64
 			bool			hardirq_stack_inuse;

@@ -2095,10 +2095,12 @@ static inline struct sk_buff *skb_peek_next(struct sk_buff *skb,
  *	The reference count is not incremented and the reference is therefore
  *	volatile. Use with caution.
  */
+//获取sk_buff_head队列的尾部元素
 static inline struct sk_buff *skb_peek_tail(const struct sk_buff_head *list_)
 {
 	struct sk_buff *skb = READ_ONCE(list_->prev);
 
+	//skb为自己 即队列为空
 	if (skb == (struct sk_buff *)list_)
 		skb = NULL;
 	return skb;

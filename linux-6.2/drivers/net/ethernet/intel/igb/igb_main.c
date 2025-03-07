@@ -1226,8 +1226,8 @@ static int igb_alloc_q_vector(struct igb_adapter *adapter,
 		memset(q_vector, 0, size);
 	}
 	if (!q_vector)
-		return -ENOMEM;
-
+		return -ENOMEM; 
+  
 	/* initialize NAPI */
 	//使用 netif_napi_add 注册 NAPI，并指定 igb_poll 作为网络中断的处理函数。NAPI 是一种机制，用于减少中断频率并提高网络吞吐量。
 	netif_napi_add(adapter->netdev, &q_vector->napi, igb_poll);
@@ -2165,6 +2165,7 @@ int igb_up(struct igb_adapter *adapter)
 		wr32(E1000_CTRL_EXT, reg_data);
 	}
 
+	//启用网卡
 	netif_tx_start_all_queues(adapter->netdev);
 
 	/* start the watchdog. */
@@ -4258,6 +4259,7 @@ int igb_setup_tx_resources(struct igb_ring *tx_ring)
 	struct device *dev = tx_ring->dev;
 	int size;
 
+	//申请igb_tx_buffer数组
 	size = sizeof(struct igb_tx_buffer) * tx_ring->count;
 
 	tx_ring->tx_buffer_info = vmalloc(size);
@@ -6177,6 +6179,7 @@ static inline int igb_maybe_stop_tx(struct igb_ring *tx_ring, const u16 size)
 	return __igb_maybe_stop_tx(tx_ring, size);
 }
 
+//将数据放入缓冲区
 static int igb_tx_map(struct igb_ring *tx_ring,
 		      struct igb_tx_buffer *first,
 		      const u8 hdr_len)
@@ -6191,17 +6194,22 @@ static int igb_tx_map(struct igb_ring *tx_ring,
 	u32 cmd_type = igb_tx_cmd_type(skb, tx_flags);
 	u16 i = tx_ring->next_to_use;
 
+	//获取发送描述符
 	tx_desc = IGB_TX_DESC(tx_ring, i);
 
 	igb_tx_olinfo_status(tx_ring, tx_desc, tx_flags, skb->len - hdr_len);
 
+	//计算头部和数据长度
 	size = skb_headlen(skb);
 	data_len = skb->data_len;
 
+	//将数据映射到 DMA 地址
 	dma = dma_map_single(tx_ring->dev, skb->data, size, DMA_TO_DEVICE);
 
 	tx_buffer = first;
 
+
+	//负责处理包含多个片段的 TCP/UDP 数据包 遍历数据包 skb 的所有片段
 	for (frag = &skb_shinfo(skb)->frags[0];; frag++) {
 		if (dma_mapping_error(tx_ring->dev, dma))
 			goto dma_error;
@@ -6245,7 +6253,7 @@ static int igb_tx_map(struct igb_ring *tx_ring,
 
 		size = skb_frag_size(frag);
 		data_len -= size;
-
+		//将当前片段映射到设备的 DMA 地址
 		dma = skb_frag_dma_map(tx_ring->dev, frag, 0,
 				       size, DMA_TO_DEVICE);
 
@@ -6253,6 +6261,7 @@ static int igb_tx_map(struct igb_ring *tx_ring,
 	}
 
 	/* write last descriptor with RS and EOP bits */
+	//设置最后一个描述符
 	cmd_type |= size | IGB_TXD_DCMD;
 	tx_desc->read.cmd_type_len = cpu_to_le32(cmd_type);
 
@@ -6430,6 +6439,7 @@ unmap:
 	return IGB_XDP_CONSUMED;
 }
 
+//igb网卡发送数据
 netdev_tx_t igb_xmit_frame_ring(struct sk_buff *skb,
 				struct igb_ring *tx_ring)
 {
@@ -6457,12 +6467,14 @@ netdev_tx_t igb_xmit_frame_ring(struct sk_buff *skb,
 	}
 
 	/* record the location of the first descriptor for this packet */
+	//记录第一个描述符的位置
 	first = &tx_ring->tx_buffer_info[tx_ring->next_to_use];
 	first->type = IGB_TYPE_SKB;
 	first->skb = skb;
 	first->bytecount = skb->len;
 	first->gso_segs = 1;
 
+	//时间戳
 	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)) {
 		struct igb_adapter *adapter = netdev_priv(tx_ring->netdev);
 
@@ -6481,6 +6493,7 @@ netdev_tx_t igb_xmit_frame_ring(struct sk_buff *skb,
 		}
 	}
 
+	//vlan
 	if (skb_vlan_tag_present(skb)) {
 		tx_flags |= IGB_TX_FLAGS_VLAN;
 		tx_flags |= (skb_vlan_tag_get(skb) << IGB_TX_FLAGS_VLAN_SHIFT);
@@ -6496,6 +6509,7 @@ netdev_tx_t igb_xmit_frame_ring(struct sk_buff *skb,
 	else if (!tso)
 		igb_tx_csum(tx_ring, first);
 
+	//调用 igb_tx_map 函数将数据包映射到硬件发送环的描述符
 	if (igb_tx_map(tx_ring, first, hdr_len))
 		goto cleanup_tx_tstamp;
 
@@ -6529,6 +6543,7 @@ static inline struct igb_ring *igb_tx_queue_mapping(struct igb_adapter *adapter,
 	return adapter->tx_ring[r_idx];
 }
 
+//igb网卡发送
 static netdev_tx_t igb_xmit_frame(struct sk_buff *skb,
 				  struct net_device *netdev)
 {
@@ -8884,6 +8899,7 @@ static int igb_clean_rx_irq(struct igb_q_vector *q_vector, const int budget)
 #if (PAGE_SIZE < 8192)
 	frame_sz = igb_rx_frame_truesize(rx_ring, 0);
 #endif
+	//初始化和准备 XDP 缓冲区
 	xdp_init_buff(&xdp, frame_sz, &rx_ring->xdp_rxq);
 
 	//在一个循环中，处理接收队列中的数据包。每次迭代最多处理 budget 个数据包，直到达到 budget 
@@ -8918,6 +8934,7 @@ static int igb_clean_rx_irq(struct igb_q_vector *q_vector, const int budget)
 		//获取缓冲区的地址
 		pktbuf = page_address(rx_buffer->page) + rx_buffer->page_offset;
 
+		//处理时间戳
 		/* pull rx packet timestamp if available and valid */
 		if (igb_test_staterr(rx_desc, E1000_RXDADV_STAT_TSIP)) {
 			int ts_hdr_len;
@@ -8970,7 +8987,7 @@ static int igb_clean_rx_irq(struct igb_q_vector *q_vector, const int budget)
 			rx_buffer->pagecnt_bias++;
 			break;
 		}
-
+		//释放接收缓冲区
 		igb_put_rx_buffer(rx_ring, rx_buffer, rx_buf_pgcnt);
 		cleaned_count++;
 

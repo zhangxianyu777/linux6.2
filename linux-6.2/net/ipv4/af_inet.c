@@ -169,7 +169,7 @@ EXPORT_SYMBOL(inet_sock_destruct);
 /*
  *	Automatically bind an unbound socket.
  */
-
+//自动绑定本地端口
 static int inet_autobind(struct sock *sk)
 {
 	struct inet_sock *inet;
@@ -177,10 +177,12 @@ static int inet_autobind(struct sock *sk)
 	lock_sock(sk);
 	inet = inet_sk(sk);
 	if (!inet->inet_num) {
+		//分配一个可用端口 其在tcp_prot中被定义为inet_csk_get_port
 		if (sk->sk_prot->get_port(sk, 0)) {
 			release_sock(sk);
 			return -EAGAIN;
 		}
+		//绑定本地端口
 		inet->inet_sport = htons(inet->inet_num);
 	}
 	release_sock(sk);
@@ -324,7 +326,7 @@ lookup_protocol:
 	WARN_ON(!answer_prot->slab);
 
 	err = -ENOMEM;
-	//分配sk结构，并将tcp->prot赋值给sk->sk_prot上
+	//分配sk结构，并将tcp_prot赋值给sk->sk_prot上
 	sk = sk_alloc(net, PF_INET, GFP_KERNEL, answer_prot, kern);
 	if (!sk)
 		goto out;
@@ -817,11 +819,16 @@ int inet_getname(struct socket *sock, struct sockaddr *uaddr,
 }
 EXPORT_SYMBOL(inet_getname);
 
+//绑定本地端口
 int inet_send_prepare(struct sock *sk)
 {
+	//RPS
 	sock_rps_record_flow(sk);
 
 	/* We may need to bind the socket. */
+	//inet_sk(sk)->inet_num是本地端口号，此处标识还没有本地端口
+	//!sk->sk_prot->no_autobind 协议支持自动绑定
+	//inet_autobind 进行绑定
 	if (data_race(!inet_sk(sk)->inet_num) && !sk->sk_prot->no_autobind &&
 	    inet_autobind(sk))
 		return -EAGAIN;
@@ -830,10 +837,11 @@ int inet_send_prepare(struct sock *sk)
 }
 EXPORT_SYMBOL_GPL(inet_send_prepare);
 
+//发送数据
 int inet_sendmsg(struct socket *sock, struct msghdr *msg, size_t size)
 {
 	struct sock *sk = sock->sk;
-
+	//如果没有绑定本地端口，则绑定
 	if (unlikely(inet_send_prepare(sk)))
 		return -EAGAIN;
 
@@ -1984,7 +1992,7 @@ static int __init inet_init(void)
 	 *	Tell SOCKET that we are alive...
 	 */
 
-	//注册了一个套接字操作集
+	//注册了一个套接字操作集 用户申请套接字时实际调用
 	(void)sock_register(&inet_family_ops);
 
 #ifdef CONFIG_SYSCTL

@@ -496,6 +496,7 @@ static inline int neigh_hh_output(const struct hh_cache *hh, struct sk_buff *skb
 	unsigned int seq;
 	unsigned int hh_len;
 
+	///* 拷贝二层头到skb */
 	do {
 		seq = read_seqbegin(&hh->hh_lock);
 		hh_len = READ_ONCE(hh->hh_len);
@@ -530,6 +531,7 @@ static inline int neigh_hh_output(const struct hh_cache *hh, struct sk_buff *skb
 	return dev_queue_xmit(skb);
 }
 
+//邻居子系统进入
 static inline int neigh_output(struct neighbour *n, struct sk_buff *skb,
 			       bool skip_cache)
 {
@@ -538,11 +540,13 @@ static inline int neigh_output(struct neighbour *n, struct sk_buff *skb,
 	/* n->nud_state and hh->hh_len could be changed under us.
 	 * neigh_hh_output() is taking care of the race later.
 	 */
+	//有连接 且缓存头部存在
 	if (!skip_cache &&
 	    (READ_ONCE(n->nud_state) & NUD_CONNECTED) &&
 	    READ_ONCE(hh->hh_len))
 		return neigh_hh_output(hh, skb);
 
+	//arp_constructor时定义为dev_queue_xmit
 	return n->output(n, skb);
 }
 

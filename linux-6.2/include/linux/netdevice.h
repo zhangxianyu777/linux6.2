@@ -3037,6 +3037,7 @@ u16 dev_pick_tx_cpu_id(struct net_device *dev, struct sk_buff *skb,
 int __dev_queue_xmit(struct sk_buff *skb, struct net_device *sb_dev);
 int __dev_direct_xmit(struct sk_buff *skb, u16 queue_id);
 
+//设备子系统入口函数
 static inline int dev_queue_xmit(struct sk_buff *skb)
 {
 	return __dev_queue_xmit(skb, NULL);
@@ -4867,7 +4868,7 @@ static inline ktime_t netdev_get_tstamp(struct net_device *dev,
 
 	return hwtstamps->hwtstamp;
 }
-
+//网络设备子系统 发送
 static inline netdev_tx_t __netdev_start_xmit(const struct net_device_ops *ops,
 					      struct sk_buff *skb, struct net_device *dev,
 					      bool more)
@@ -4881,13 +4882,15 @@ static inline bool netdev_xmit_more(void)
 	return __this_cpu_read(softnet_data.xmit.more);
 }
 
+//发送数据包
 static inline netdev_tx_t netdev_start_xmit(struct sk_buff *skb, struct net_device *dev,
 					    struct netdev_queue *txq, bool more)
 {
 	const struct net_device_ops *ops = dev->netdev_ops;
 	netdev_tx_t rc;
-
+	//调用
 	rc = __netdev_start_xmit(ops, skb, dev, more);
+	//更新时间戳
 	if (rc == NETDEV_TX_OK)
 		txq_trans_update(txq);
 

@@ -4984,6 +4984,7 @@ int tcp_send_rcvq(struct sock *sk, struct msghdr *msg, size_t size)
 		goto err_free;
 	}
 
+	//将用户空间的数据复制到内核空间的缓冲区
 	err = skb_copy_datagram_from_iter(skb, 0, &msg->msg_iter, size);
 	if (err)
 		goto err_free;
@@ -4992,6 +4993,7 @@ int tcp_send_rcvq(struct sock *sk, struct msghdr *msg, size_t size)
 	TCP_SKB_CB(skb)->end_seq = TCP_SKB_CB(skb)->seq + size;
 	TCP_SKB_CB(skb)->ack_seq = tcp_sk(sk)->snd_una - 1;
 
+	//调用 tcp_queue_rcv 将数据包（skb）添加到接收队列
 	if (tcp_queue_rcv(sk, skb, &fragstolen)) {
 		WARN_ON_ONCE(fragstolen); /* should not happen */
 		__kfree_skb(skb);

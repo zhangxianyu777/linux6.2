@@ -658,16 +658,18 @@ struct neighbour *neigh_lookup_nodev(struct neigh_table *tbl, struct net *net,
 }
 EXPORT_SYMBOL(neigh_lookup_nodev);
 
+//创建邻居表项
 static struct neighbour *
 ___neigh_create(struct neigh_table *tbl, const void *pkey,
 		struct net_device *dev, u32 flags,
 		bool exempt_from_gc, bool want_ref)
-{
+{ 
 	u32 hash_val, key_len = tbl->key_len;
 	struct neighbour *n1, *rc, *n;
 	struct neigh_hash_table *nht;
 	int error;
 
+	//申请邻居表项
 	n = neigh_alloc(tbl, dev, flags, exempt_from_gc);
 	trace_neigh_create(tbl, dev, pkey, n, exempt_from_gc);
 	if (!n) {
@@ -675,11 +677,13 @@ ___neigh_create(struct neigh_table *tbl, const void *pkey,
 		goto out;
 	}
 
+	//复制 IP 地址，绑定网卡
 	memcpy(n->primary_key, pkey, key_len);
 	n->dev = dev;
 	netdev_hold(dev, &n->dev_tracker, GFP_ATOMIC);
 
 	/* Protocol specific setup. */
+	//constructor调用arp_constructor
 	if (tbl->constructor &&	(error = tbl->constructor(n)) < 0) {
 		rc = ERR_PTR(error);
 		goto out_neigh_release;
@@ -694,6 +698,7 @@ ___neigh_create(struct neigh_table *tbl, const void *pkey,
 	}
 
 	/* Device specific setup. */
+	//赋值
 	if (n->parms->neigh_setup &&
 	    (error = n->parms->neigh_setup(n)) < 0) {
 		rc = ERR_PTR(error);
@@ -736,6 +741,7 @@ ___neigh_create(struct neigh_table *tbl, const void *pkey,
 		list_add_tail(&n->managed_list, &n->tbl->managed_list);
 	if (want_ref)
 		neigh_hold(n);
+		//添加到邻居哈希表中
 	rcu_assign_pointer(n->next,
 			   rcu_dereference_protected(nht->hash_buckets[hash_val],
 						     lockdep_is_held(&tbl->lock)));
@@ -1559,19 +1565,19 @@ static void neigh_hh_init(struct neighbour *n)
 }
 
 /* Slow and careful. */
-
+//邻居层内部函数
 int neigh_resolve_output(struct neighbour *neigh, struct sk_buff *skb)
 {
 	int rc = 0;
-
+	//发送arp请求
 	if (!neigh_event_send(neigh, skb)) {
 		int err;
 		struct net_device *dev = neigh->dev;
 		unsigned int seq;
-
+		//初始化二层头缓存
 		if (dev->header_ops->cache && !READ_ONCE(neigh->hh.hh_len))
 			neigh_hh_init(neigh);
-
+		//添加二层头
 		do {
 			__skb_pull(skb, skb_network_offset(skb));
 			seq = read_seqbegin(&neigh->ha_lock);
@@ -1580,6 +1586,7 @@ int neigh_resolve_output(struct neighbour *neigh, struct sk_buff *skb)
 		} while (read_seqretry(&neigh->ha_lock, seq));
 
 		if (err >= 0)
+			//发送数据包:
 			rc = dev_queue_xmit(skb);
 		else
 			goto out_kfree_skb;

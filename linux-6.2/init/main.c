@@ -1413,7 +1413,7 @@ static void __init do_basic_setup(void)
 	do_ctors();
 	do_initcalls();
 }
-
+//early_initcall 调用位置
 static void __init do_pre_smp_initcalls(void)
 {
 	initcall_entry_t *fn;

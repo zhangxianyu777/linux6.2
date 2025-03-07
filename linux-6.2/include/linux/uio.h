@@ -38,6 +38,7 @@ struct iov_iter_state {
 	unsigned long nr_segs;
 };
 
+//数据信息
 struct iov_iter {
 	u8 iter_type;
 	bool nofault;
@@ -49,6 +50,7 @@ struct iov_iter {
 	};
 	size_t count;
 	union {
+		//实际数据
 		const struct iovec *iov;
 		const struct kvec *kvec;
 		const struct bio_vec *bvec;

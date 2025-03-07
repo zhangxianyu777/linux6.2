@@ -439,6 +439,7 @@ INDIRECT_CALLABLE_DECLARE(int ip6_output(struct net *, struct sock *,
 INDIRECT_CALLABLE_DECLARE(int ip_output(struct net *, struct sock *,
 					 struct sk_buff *));
 /* Output packet to network from transport.  */
+//出口函数 回调ip_output
 static inline int dst_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 {
 	return INDIRECT_CALL_INET(skb_dst(skb)->output,

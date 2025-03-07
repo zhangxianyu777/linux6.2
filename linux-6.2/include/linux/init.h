@@ -269,6 +269,7 @@ extern bool initcall_debug;
  *
  * Only for built-in code, not modules.
  */
+//在SMP初始化前执行
 #define early_initcall(fn)		__define_initcall(fn, early)
 
 /*

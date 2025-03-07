@@ -2647,6 +2647,7 @@ struct rtable *ip_route_output_key_hash(struct net *net, struct flowi4 *fl4,
 }
 EXPORT_SYMBOL_GPL(ip_route_output_key_hash);
 
+//查找路由
 struct rtable *ip_route_output_key_hash_rcu(struct net *net, struct flowi4 *fl4,
 					    struct fib_result *res,
 					    const struct sk_buff *skb)
@@ -2750,6 +2751,7 @@ struct rtable *ip_route_output_key_hash_rcu(struct net *net, struct flowi4 *fl4,
 		goto make_route;
 	}
 
+	//核心函数
 	err = fib_lookup(net, fl4, res, 0);
 	if (err) {
 		res->fi = NULL;

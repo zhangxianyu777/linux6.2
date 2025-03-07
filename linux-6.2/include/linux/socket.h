@@ -30,9 +30,11 @@ typedef __kernel_sa_family_t	sa_family_t;
 /*
  *	1003.1g requires sa_family_t and that sa_data is char.
  */
-
+//对端地址
 struct sockaddr {
+	//地址族
 	sa_family_t	sa_family;	/* address family, AF_xxx	*/
+	//地址数据
 	union {
 		char sa_data_min[14];		/* Minimum 14 bytes of protocol address	*/
 		DECLARE_FLEX_ARRAY(char, sa_data);
@@ -51,13 +53,14 @@ struct linger {
  *	system, not 4.3. Thus msg_accrights(len) are now missing. They
  *	belong in an obscure libc emulation or the bin.
  */
-
+//消息结构体
 struct msghdr {
 	void		*msg_name;	/* ptr to socket address structure */
 	int		msg_namelen;	/* size of socket address structure */
 
 	int		msg_inq;	/* output, data left in socket */
 
+	//数据信息
 	struct iov_iter	msg_iter;	/* data */
 
 	/*
@@ -166,7 +169,7 @@ static inline struct cmsghdr * cmsg_nxthdr (struct msghdr *__msg, struct cmsghdr
 {
 	return __cmsg_nxthdr(__msg->msg_control, __msg->msg_controllen, __cmsg);
 }
-
+//获取数据长度
 static inline size_t msg_data_left(struct msghdr *msg)
 {
 	return iov_iter_count(&msg->msg_iter);

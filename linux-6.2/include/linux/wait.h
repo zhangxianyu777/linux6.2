@@ -168,6 +168,7 @@ extern void add_wait_queue_exclusive(struct wait_queue_head *wq_head, struct wai
 extern void add_wait_queue_priority(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry);
 extern void remove_wait_queue(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry);
 
+//将wq_entry放入wq_head
 static inline void __add_wait_queue(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry)
 {
 	struct list_head *head = &wq_head->head;
