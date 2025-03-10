@@ -1365,7 +1365,7 @@ new_segment:
 						   first_skb);
 			if (!skb)
 				goto wait_for_space;
-
+		
 			process_backlog++;
 			
 			//将 skb 添加到 TCP 发送队列中
@@ -1402,16 +1402,15 @@ new_segment:
 				}
 				merge = false;
 			}
-
 			copy = min_t(int, copy, pfrag->size - pfrag->offset);
-
+			
 			if (unlikely(skb_zcopy_pure(skb) || skb_zcopy_managed(skb))) {
 				if (tcp_downgrade_zcopy_pure(sk, skb))
 					goto wait_for_space;
 				skb_zcopy_downgrade_managed(skb);
 			}
-
 			copy = tcp_wmem_schedule(sk, copy);
+
 			if (!copy)
 				goto wait_for_space;
 

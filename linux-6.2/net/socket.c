@@ -544,6 +544,7 @@ struct socket *sockfd_lookup(int fd, int *err)
 }
 EXPORT_SYMBOL(sockfd_lookup);
 
+//根据fd找到对应socket结构
 static struct socket *sockfd_lookup_light(int fd, int *err, int *fput_needed)
 {
 	//获取fd结构
@@ -1837,20 +1838,27 @@ SYSCALL_DEFINE3(bind, int, fd, struct sockaddr __user *, umyaddr, int, addrlen)
  *	ready for listening.
  */
 
+ //	listen系统调用进入函数 fd是文件句柄 backlog是最大连接队列长度
 int __sys_listen(int fd, int backlog)
 {
 	struct socket *sock;
 	int err, fput_needed;
 	int somaxconn;
 
+	//根据fd找到struct socket结构
 	sock = sockfd_lookup_light(fd, &err, &fput_needed);
 	if (sock) {
+		//获取 sk->sk_net->core.sysctl_somaxconn 即netns_core中的sysctl_somaxconn
+		//其被初始化为SOMAXCONN	4096 意为该命名空间下的最大连接队列长度
+		//可以使用sysctl -w net.core.somaxconn=1024 （proc/sys） 进行修改
 		somaxconn = READ_ONCE(sock_net(sock->sk)->core.sysctl_somaxconn);
+		//和传参backlog比较，取小值存储在backlog
 		if ((unsigned int)backlog > somaxconn)
 			backlog = somaxconn;
-
+		//CONFIG_SECURITY_NETWORK开启时实际调用（网络安全管理）
 		err = security_socket_listen(sock, backlog);
 		if (!err)
+			//检查通过则调用实际listen函数 sock->ops->listen在注册inet_create被注册为inet_listen
 			err = sock->ops->listen(sock, backlog);
 
 		fput_light(sock->file, fput_needed);
@@ -1858,6 +1866,7 @@ int __sys_listen(int fd, int backlog)
 	return err;
 }
 
+//listen 系统调用入口 fd是文件句柄 backlog是最大连接队列长度
 SYSCALL_DEFINE2(listen, int, fd, int, backlog)
 {
 	return __sys_listen(fd, backlog);

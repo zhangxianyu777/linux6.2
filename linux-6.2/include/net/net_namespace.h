@@ -377,11 +377,14 @@ static inline void write_pnet(possible_net_t *pnet, struct net *net)
 #endif
 }
 
+//读取pnet结构 possible_net_t指的可能存在的网络命名空间
 static inline struct net *read_pnet(const possible_net_t *pnet)
 {
+	//配置选项 namespace
 #ifdef CONFIG_NET_NS
 	return pnet->net;
 #else
+	//否则返回init_net
 	return &init_net;
 #endif
 }

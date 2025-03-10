@@ -646,6 +646,7 @@ __rcu_dereference_sk_user_data_with_flags(const struct sock *sk,
 #define rcu_assign_sk_user_data(sk, ptr)				\
 	__rcu_assign_sk_user_data_with_flags(sk, ptr, 0)
 
+//获取对应的sk->sk_net
 static inline
 struct net *sock_net(const struct sock *sk)
 {

@@ -2290,9 +2290,10 @@ int security_socket_connect(struct socket *sock, struct sockaddr *address, int a
 {
 	return call_int_hook(socket_connect, 0, sock, address, addrlen);
 }
-
+//CONFIG_SECURITY_NETWORK开启时实际调用
 int security_socket_listen(struct socket *sock, int backlog)
 {
+	//调用相关钩子函数
 	return call_int_hook(socket_listen, 0, sock, backlog);
 }
 
